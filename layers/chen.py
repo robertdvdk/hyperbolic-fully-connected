@@ -1,22 +1,21 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
-
 from .lorentz import Lorentz
 
+
 class ChenLinear(nn.Module):
-    """ Linear layer in the Lorentz model, as described in Chen et al. (2020).
-    """
+    """Linear layer in the Lorentz model, as described in Chen et al. (2020)."""
+
     def __init__(
-            self,
-            manifold: Lorentz,
-            in_features,
-            out_features,
-            bias=False,
-            init_scale=None,
-            learn_scale=False,
-            normalize=False
-        ):
+        self,
+        manifold: Lorentz,
+        in_features,
+        out_features,
+        bias=False,
+        init_scale=None,
+        learn_scale=False,
+        normalize=False,
+    ):
         super().__init__()
         self.manifold = manifold
         self.in_features = in_features
@@ -31,12 +30,13 @@ class ChenLinear(nn.Module):
 
         # Scale for internal normalization
         if init_scale is not None:
-            self.scale = nn.Parameter(torch.ones(()) * init_scale, requires_grad=learn_scale)
+            self.scale = nn.Parameter(
+                torch.ones(()) * init_scale, requires_grad=learn_scale
+            )
         else:
             self.scale = nn.Parameter(torch.ones(()) * 2.3, requires_grad=learn_scale)
 
     def forward(self, x):
-
         x = self.weight(x)
         x_space = x.narrow(-1, 1, x.shape[-1] - 1)
 
@@ -47,13 +47,13 @@ class ChenLinear(nn.Module):
             mask = square_norm <= 1e-10
 
             square_norm[mask] = 1
-            unit_length = x_space/torch.sqrt(square_norm)
-            x_space = scale*unit_length
+            unit_length = x_space / torch.sqrt(square_norm)
+            x_space = scale * unit_length
 
             x_time = torch.sqrt(scale**2 + 1 / self.manifold.k() + 1e-5)
             x_time = x_time.masked_fill(mask, 1 / self.manifold.k().sqrt())
 
-            mask = mask==False
+            mask = mask == False  # noqa: E712
             x_space = x_space * mask
 
             x = torch.cat([x_time, x_space], dim=-1)
