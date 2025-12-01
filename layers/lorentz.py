@@ -118,3 +118,26 @@ class Lorentz(nn.Module):
 
         # Concatenate time and space to form the Lorentz point
         return torch.cat([time_component, space_components], dim=-1)
+    
+    def direct_concat(self, xs: torch.Tensor):
+        """
+        Perform Lorentz direct concatenation as described by Qu, E., et al. (https://openreview.net/forum?id=NQi9U0YLW3)
+
+        Args:
+            xs: list of tensors to concatenate. Assumes the last dimension is the dimension along which the tensor lies on the manifold, and the second last dimension is the dimension to concatenate over.
+
+        
+        """
+        # Input check
+        time_sq = xs.narrow(dim=-1, start=0, length=1) ** 2
+        space_sq = xs.narrow(dim=-1, start=1, length=xs.size(-1)-1) ** 2
+        lorentz_norm_sq = -time_sq + space_sq.sum(dim=-1, keepdim=True)
+        target_norm = -1.0 / self.k()
+        assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-5), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
+
+        time = torch.sqrt(((xs[..., 0]) ** 2).sum(dim=-1, keepdim=True) - (xs.shape[-2] - 1) / self.k())
+        space = xs[..., 1:].reshape(*xs.shape[:-2], -1)
+        out = torch.cat([time, space], dim=-1)
+        assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-5), "Output tensor does not lie on the Lorentz manifold."
+        return out
+    
