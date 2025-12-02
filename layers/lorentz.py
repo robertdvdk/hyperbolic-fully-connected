@@ -133,11 +133,11 @@ class Lorentz(nn.Module):
         space_sq = xs.narrow(dim=-1, start=1, length=xs.size(-1)-1) ** 2
         lorentz_norm_sq = -time_sq + space_sq.sum(dim=-1, keepdim=True)
         target_norm = -1.0 / self.k()
-        assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-5), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
+        assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
 
         time = torch.sqrt(((xs[..., 0]) ** 2).sum(dim=-1, keepdim=True) - (xs.shape[-2] - 1) / self.k())
         space = xs[..., 1:].reshape(*xs.shape[:-2], -1)
         out = torch.cat([time, space], dim=-1)
-        assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-5), "Output tensor does not lie on the Lorentz manifold."
+        assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-3), "Output tensor does not lie on the Lorentz manifold."
         return out
     

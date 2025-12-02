@@ -12,6 +12,7 @@ class Lorentz_fully_connected(nn.Module):
         reset_params="eye",
         a_default=0.0,
         activation=nn.functional.relu,
+        do_mlr = False,
     ):
         super().__init__()
         self.manifold = manifold
@@ -20,6 +21,8 @@ class Lorentz_fully_connected(nn.Module):
         self.V_auxiliary = nn.Parameter(torch.randn(in_features + 1, out_features))
         self.reset_parameters(reset_params=reset_params, a_default=a_default)
         self.activation = activation
+
+        self.do_mlr = do_mlr
 
     def reset_parameters(self, reset_params, a_default):
         in_features, out_features = self.U.shape
@@ -70,6 +73,8 @@ class Lorentz_fully_connected(nn.Module):
         return self.activation(x @ V)
 
     def forward(self, x):
+        if self.do_mlr:
+            return self.mlr(x)
         output_space = self.compute_output_space(x)
         return self.manifold.projection_space_orthogonal(output_space)
 
@@ -117,7 +122,8 @@ class Lorentz_Conv2d(nn.Module):
         if self.padding == "same":
             pad = self.kernel_size // 2
             x = nn.functional.pad(x, (pad, pad, pad, pad), mode='constant', value=0)  # Pad height and width
-            x[:, 0, :, :] = torch.sqrt(1.0 + (x[:, 1:, :, :] ** 2).sum(dim=1))  # Recalculate time component
+            time_comp = torch.sqrt(1.0 + (x[:, 1:, :, :] ** 2).sum(dim=1, keepdim=True))
+            x = torch.cat([time_comp, x[:, 1:, :, :]], dim=1)
         batch_size, in_channels, height, width = x.shape
         x_unfolded = x.unfold(dimension=2, size=self.kernel_size, step=self.stride).unfold(dimension=3, size=self.kernel_size, step=self.stride)  # (B, (C+1), H_out, W_out, k, k)
         x_unfolded = rearrange(x_unfolded, 'b c h w k1 k2 -> b (h w) (k1 k2) c')  # (B, L, k*k, (C+1))
