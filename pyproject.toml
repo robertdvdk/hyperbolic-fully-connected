@@ -19,6 +19,7 @@ dependencies = [
     "scikit-learn>=1.7.2",
     "optuna>=4.5.0",
     "pandas>=2.3.3",
+    "einops>=0.8.1",
 ]
 
 [project.optional-dependencies]
