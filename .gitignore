@@ -2,3 +2,5 @@ data/*
 
 *.pyc
 
+cifar_exp/data/*
+cifar_exp/wandb/*

@@ -16,6 +16,8 @@ class Lorentz_fully_connected(nn.Module):
     ):
         super().__init__()
         self.manifold = manifold
+        in_features = in_features - 1
+        out_features = out_features - 1
         self.U = nn.Parameter(torch.randn(in_features, out_features))
         self.a = nn.Parameter(torch.zeros(1, out_features))  # -b
         self.V_auxiliary = nn.Parameter(torch.randn(in_features + 1, out_features))
@@ -31,20 +33,53 @@ class Lorentz_fully_connected(nn.Module):
                 with torch.no_grad():
                     self.U.data.copy_(0.5 * torch.eye(in_features, out_features))
             else:
-                print("not possible 'eye' initialization, defaulting to kaiming")
                 with torch.no_grad():
-                    self.U.data.copy_(
-                        torch.randn(in_features, out_features)
-                        * (2 * in_features * out_features) ** -0.5
-                    )
-            self.a.data.fill_(a_default)
-        elif reset_params == "kaiming":
+                    self.U.data.copy_(0.5 * torch.eye(in_features, out_features))
+            # else:
+            #     print("not possible 'eye' initialization, defaulting to kaiming")
+            #     with torch.no_grad():
+            #         self.U.data.copy_(
+            #             torch.randn(in_features, out_features)
+            #             * (2 * in_features * out_features) ** -0.5
+            #         )
+            # self.a.data.fill_(a_default)
+        elif reset_params == "xavier":
+            # Xavier/Glorot: good for tanh, sigmoid, or no activation
+            std = (2.0 / (in_features + out_features)) ** 0.5
             with torch.no_grad():
-                self.U.data.copy_(
-                    torch.randn(in_features, out_features)
-                    * (2 * in_features * out_features) ** -0.5
-                )
+                self.U.data.normal_(0, std)
             self.a.data.fill_(a_default)
+            
+        elif reset_params == "kaiming" or reset_params == "he":
+            # He initialization: good for ReLU
+            std = (2.0 / in_features) ** 0.5
+            with torch.no_grad():
+                self.U.data.normal_(0, std)
+            self.a.data.fill_(a_default)
+            
+        elif reset_params == "lorentz_xavier":
+            # My derived initialization for when a != 0 (time contributes)
+            # Factor of 2 reduction due to time component
+            std = (1.0 / (in_features + out_features)) ** 0.5
+            with torch.no_grad():
+                self.U.data.normal_(0, std)
+            self.a.data.fill_(a_default)
+
+        elif reset_params == "orthogonal":
+            with torch.no_grad():
+                nn.init.orthogonal_(self.U)
+                # Scale to preserve expected norm for non-square
+                if in_features != out_features:
+                    self.U.data *= (in_features / out_features) ** 0.25
+            self.a.data.fill_(a_default)
+            
+        elif reset_params == "lorentz_kaiming":
+            # For ReLU with time contribution - the 2 from ReLU cancels with 1/2 from Lorentz
+            std = (1.0 / in_features) ** 0.5
+            with torch.no_grad():
+                self.U.data.normal_(0, std)
+            self.a.data.fill_(a_default)
+            
         else:
             raise KeyError(f"Unknown reset_params value: {reset_params}")
 
@@ -84,62 +119,3 @@ class Lorentz_fully_connected(nn.Module):
 
     def mlr(self, x):
         return self.signed_dist2hyperplanes_scaled_angle(x)
-
-
-class Lorentz_Conv2d(nn.Module):
-    def __init__(self,
-                 in_channels,
-                 out_channels,
-                 kernel_size,
-                 manifold: Lorentz = Lorentz(1.0),
-                 stride=1,
-                 padding=0,
-                 bias=True,):
-        """
-        Lorentz fully connected layer applied in a convolutional manner.
-        
-        Args:
-            in_channels: Number of input channels (excluding time dimension).
-            out_channels: Number of output channels.
-            kernel_size: Size of the convolutional kernel.
-            manifold: Instance of the Lorentz manifold.
-            stride: Stride of the convolution.
-            padding: Padding for the convolution (only 'same' supported)
-            bias: Whether to include a bias term (not used here).
-        """
-        super().__init__()
-        self.kernel_size = kernel_size
-        self.stride = stride
-        self.padding = padding
-        self.manifold = manifold
-        self.lin = Lorentz_fully_connected(
-            in_features=in_channels * kernel_size * kernel_size,
-            out_features=out_channels,
-            manifold=manifold,
-            activation=nn.Identity(),
-        )
-
-    def forward(self, x: torch.Tensor):
-        if self.padding == "same":
-            pad = self.kernel_size // 2
-            x = nn.functional.pad(x, (pad, pad, pad, pad), mode='constant', value=0)  # Pad height and width
-            time_comp = torch.sqrt(1/self.manifold.k() + (x[:, 1:, :, :] ** 2).sum(dim=1, keepdim=True))
-            x = torch.cat([time_comp, x[:, 1:, :, :]], dim=1)
-        batch_size, in_channels, height, width = x.shape
-        x_unfolded = x.unfold(dimension=2, size=self.kernel_size, step=self.stride).unfold(dimension=3, size=self.kernel_size, step=self.stride)  # (B, (C+1), H_out, W_out, k, k)
-        x_unfolded = rearrange(x_unfolded, 'b c h w k1 k2 -> b (h w) (k1 k2) c')  # (B, L, k*k, (C+1))
-        x_unfolded = self.manifold.direct_concat(x_unfolded)  # (B, L, C*k*k + 1)
-        
-        y = self.lin(x_unfolded)  # (B, L, out_channels)
-        y = y.transpose(1, 2)  # (B, out_channels, L)
-        out_height = (height - self.kernel_size) // self.stride + 1
-        out_width = (width - self.kernel_size) // self.stride + 1
-        y = y.contiguous().view(
-            batch_size,
-            -1,
-            out_height,
-            out_width,
-        )  # (B, out_channels, H_out, W_out)
-        return y
-    
-

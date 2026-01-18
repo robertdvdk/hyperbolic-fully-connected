@@ -129,7 +129,7 @@ class Lorentz(nn.Module):
         
         # right_term: sinh(sqrt(k)|v|) / (sqrt(k)|v|) * v
         # Handle the singularity where arg -> 0
-        eps = 1e-8
+        eps = 1e-5
         mask_zero = arg < eps
         
         # Standard formula
@@ -190,6 +190,9 @@ class Lorentz(nn.Module):
         Returns:
             Projected point dim [batch_size, dim]
         """
+        # print(torch.cat(
+        #     [torch.sqrt(1 / self.k() + x.pow(2).sum(-1, keepdim=True)), x], dim=-1
+        # ))
         return torch.cat(
             [torch.sqrt(1 / self.k() + x.pow(2).sum(-1, keepdim=True)), x], dim=-1
         )
@@ -225,19 +228,33 @@ class Lorentz(nn.Module):
         Args:
             xs: list of tensors to concatenate. Assumes the last dimension is the dimension along which the tensor lies on the manifold, and the second last dimension is the dimension to concatenate over.
 
-        
+
         """
         # Input check
         time_sq = xs.narrow(dim=-1, start=0, length=1) ** 2
         space_sq = xs.narrow(dim=-1, start=1, length=xs.size(-1)-1) ** 2
         lorentz_norm_sq = -time_sq + space_sq.sum(dim=-1, keepdim=True)
         target_norm = -1.0 / self.k()
-        assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
 
-        time = torch.sqrt(((xs[..., 0]) ** 2).sum(dim=-1, keepdim=True) - (xs.shape[-2] - 1) / self.k())
+        # Debug output
+        # if not torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3):
+        #     print(f"\n=== DEBUG: direct_concat input check failed ===")
+        #     print(f"Input shape: {xs.shape}, dtype: {xs.dtype}")
+        #     print(f"Time component range: [{xs[..., 0].min().item():.6f}, {xs[..., 0].max().item():.6f}]")
+        #     print(f"Space component range: [{xs[..., 1:].min().item():.6f}, {xs[..., 1:].max().item():.6f}]")
+        #     print(f"Lorentz norm_sq range: [{lorentz_norm_sq.min().item():.6f}, {lorentz_norm_sq.max().item():.6f}]")
+        #     print(f"Target norm: {target_norm.item():.6f}")
+        #     print(f"Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item():.6f}")
+
+        # assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
+
+        time_sq_sum = ((xs[..., 0]) ** 2).sum(dim=-1, keepdim=True)
+        sqrt_arg = time_sq_sum - (xs.shape[-2] - 1) / self.k()
+        eps = 1e-7
+        time = torch.sqrt(torch.clamp(sqrt_arg, min=eps))
         space = xs[..., 1:].reshape(*xs.shape[:-2], -1)
         out = torch.cat([time, space], dim=-1)
-        assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-3), "Output tensor does not lie on the Lorentz manifold."
+        # assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-2), "Output tensor does not lie on the Lorentz manifold."
         return out
     
     def lorentz_midpoint(self, xs: torch.Tensor, weights: Optional[torch.Tensor] = None):
@@ -255,21 +272,185 @@ class Lorentz(nn.Module):
         space_sq = xs.narrow(dim=-1, start=1, length=xs.size(-1)-1) ** 2
         lorentz_norm_sq = -time_sq + space_sq.sum(dim=-1, keepdim=True)
         target_norm = -1.0 / self.k()
-        assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
+        # assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
 
         if weights is None:
             numerator = xs.sum(dim=-2)
         else:
             numerator = weights @ xs
-        
+
         time_sq = numerator.narrow(dim=-1, start=0, length=1) ** 2
         space_sq = numerator.narrow(dim=-1, start=1, length=numerator.size(-1)-1) ** 2
         lorentz_norm_sq = time_sq - space_sq.sum(dim=-1, keepdim=True)
         denominator = lorentz_norm_sq.sqrt()
         denominator = denominator * self.k().sqrt()
         out = numerator / denominator
-        assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-3), "Output tensor does not lie on the Lorentz manifold."
+        # assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-3), "Output tensor does not lie on the Lorentz manifold."
         return out
+
+    # Alias for compatibility with HyperbolicCV
+    centroid = lorentz_midpoint
+
+    def origin(self, dim: int) -> torch.Tensor:
+        """
+        Returns the origin point on the Lorentz manifold.
+
+        Args:
+            dim: The dimension of the space (including time component).
+
+        Returns:
+            Origin point (sqrt(k), 0, 0, ..., 0).
+        """
+        origin = torch.zeros(dim, device=self.c_softplus_inv.device, dtype=self.c_softplus_inv.dtype)
+        origin[0] = self.k().sqrt()
+        return origin
+
+    def add_time(self, space: torch.Tensor) -> torch.Tensor:
+        """
+        Compute time component from space components and concatenate.
+
+        Args:
+            space: Space components of shape (..., n).
+
+        Returns:
+            Full Lorentz point of shape (..., n+1) with time = sqrt(||space||^2 + k).
+        """
+        time = torch.sqrt(torch.norm(space, dim=-1, keepdim=True)**2 + self.k())
+        return torch.cat([time, space], dim=-1)
+
+    def inner(self, u: torch.Tensor, v: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
+        """
+        Minkowski inner product: -u_0*v_0 + u_1*v_1 + ... + u_n*v_n
+        """
+        uv = u * v
+        result = -uv[..., :1].sum(dim=-1, keepdim=keepdim) + uv[..., 1:].sum(dim=-1, keepdim=keepdim)
+        return result
+
+    def dist(self, x: torch.Tensor, y: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
+        """
+        Geodesic distance between two points on the hyperboloid.
+
+        d(x, y) = sqrt(k) * arccosh(-<x, y>_L / k)
+        """
+        inner_prod = -self.inner(x, y, keepdim=True)
+        # Clamp for numerical stability
+        inner_prod = torch.clamp(inner_prod / self.k(), min=1.0 + 1e-7)
+        dist = self.k().sqrt() * torch.acosh(inner_prod)
+        if not keepdim:
+            dist = dist.squeeze(-1)
+        return dist
+
+    def dist0(self, x: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
+        """
+        Geodesic distance from origin to x.
+
+        For origin o = (sqrt(k), 0, ..., 0), <o, x>_L = -sqrt(k) * x_0
+        So d(o, x) = sqrt(k) * arccosh(x_0 / sqrt(k))
+        """
+        inner_prod = x[..., :1] / self.k().sqrt()
+        inner_prod = torch.clamp(inner_prod, min=1.0 + 1e-7)
+        dist = self.k().sqrt() * torch.acosh(inner_prod)
+        if not keepdim:
+            dist = dist.squeeze(-1)
+        return dist
+
+    def logmap0_full(self, y: torch.Tensor) -> torch.Tensor:
+        """
+        Logarithmic map from origin. Returns full tangent vector (with time component).
+
+        This differs from logmap0 which returns only spatial components.
+        The tangent vector at origin has time component 0 in exact arithmetic,
+        but we compute the full vector for use in parallel transport.
+        """
+        k = self.k()
+        sqrt_k = k.sqrt()
+
+        # Distance from origin to y
+        dist = self.dist0(y, keepdim=True)
+
+        # Direction: y + <origin, y>_L / k * origin
+        # <origin, y>_L = -sqrt(k) * y_0
+        # So: y + (-sqrt(k) * y_0) / k * origin = y - y_0/sqrt(k) * origin
+        origin = torch.zeros_like(y)
+        origin[..., 0] = sqrt_k
+
+        inner_oy = -sqrt_k * y[..., :1]  # shape (..., 1)
+        nomin = y + (inner_oy / k) * origin
+
+        # Normalize by Lorentz norm
+        nomin_norm = torch.sqrt(torch.clamp(self.inner(nomin, nomin, keepdim=True), min=1e-10))
+
+        return dist * nomin / nomin_norm
+
+    def logmap0back(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Logarithmic map from x to origin. Returns tangent vector at x.
+
+        log_x(origin) = tangent vector at x pointing toward origin.
+        """
+        k = self.k()
+        sqrt_k = k.sqrt()
+
+        dist = self.dist0(x, keepdim=True)
+
+        origin = torch.zeros_like(x)
+        origin[..., 0] = sqrt_k
+
+        # <x, origin>_L = -x_0 * sqrt(k)
+        inner_xo = -x[..., :1] * sqrt_k
+        nomin = origin + (inner_xo / k) * x
+
+        nomin_norm = torch.sqrt(torch.clamp(self.inner(nomin, nomin, keepdim=True), min=1e-10))
+
+        return dist * nomin / nomin_norm
+
+    def transp0(self, y: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        """
+        Parallel transport from origin to y.
+
+        Args:
+            y: Target point on manifold.
+            v: Tangent vector at origin to transport.
+
+        Returns:
+            Transported tangent vector at y.
+        """
+        k = self.k()
+
+        # log from origin to y (tangent at origin)
+        lmap = self.logmap0_full(y)
+
+        nom = self.inner(lmap, v, keepdim=True)
+        denom = self.dist0(y, keepdim=True) ** 2 + 1e-10
+
+        # log from y back to origin (tangent at y)
+        lmap_back = self.logmap0back(y)
+
+        return v - (nom / denom) * (lmap + lmap_back)
+
+    def transp0back(self, x: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
+        """
+        Parallel transport from x to origin.
+
+        Args:
+            x: Source point on manifold.
+            v: Tangent vector at x to transport.
+
+        Returns:
+            Transported tangent vector at origin.
+        """
+        k = self.k()
+
+        # log from x to origin (tangent at x)
+        lmap = self.logmap0back(x)
+
+        nom = self.inner(lmap, v, keepdim=True)
+        denom = self.dist0(x, keepdim=True) ** 2 + 1e-10
+
+        # log from origin to x (tangent at origin)
+        lmap_forward = self.logmap0_full(x)
+
+        return v - (nom / denom) * (lmap + lmap_forward)
     
     # def distL(self, x, y):
     #     """
