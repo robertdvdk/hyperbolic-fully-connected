@@ -363,8 +363,13 @@ def train(config=None):
 
 
 def main():
-    """Run a single training run with default config."""
-    config = {
+    """
+    Entry point for both standalone runs and W&B sweeps.
+
+    For sweeps: wandb.init() connects to the sweep and populates wandb.config
+    For standalone: wandb.init() uses the default config below
+    """
+    default_config = {
         # Model
         "hidden_dim": 64,
         "curvature": 1.0,
@@ -399,10 +404,11 @@ def main():
         "evaluate_test": True,
     }
 
+    # wandb.init() will use sweep config if run by wandb agent,
+    # otherwise uses default_config
     wandb.init(
         project="ICML_Hyperbolic",
-        config=config,
-        name="baseline-run"
+        config=default_config,
     )
 
     train(wandb.config)
