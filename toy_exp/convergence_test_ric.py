@@ -15,7 +15,7 @@ import sys
 parent_dir = Path(__file__).parent.parent
 sys.path.insert(0, str(parent_dir))
 
-from layers import Lorentz_fully_connected, Lorentz  # noqa: E402
+from layers import LorentzFullyConnected, Lorentz  # noqa: E402
 
 
 # --- Constants for the Experiment ---
@@ -77,7 +77,7 @@ def run_experiment(
     set_seed(seed)
 
     # Initialize model WITHOUT ReLU activation
-    model = Lorentz_fully_connected(
+    model = LorentzFullyConnected(
         in_features=dim,
         out_features=dim,
         manifold=manifold,

@@ -25,7 +25,7 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = False
 
 
-def get_dataloaders(batch_size=128, data_dir="./cifar"):
+def get_dataloaders(batch_size, data_dir):
     """Create CIFAR-100 train/val dataloaders with standard augmentations."""
     mean = (0.5074, 0.4867, 0.4411)
     std = (0.267, 0.256, 0.276)
@@ -122,7 +122,7 @@ def train(config=None):
     # Data
     train_loader, val_loader = get_dataloaders(
         batch_size=get_config('batch_size', 128),
-        data_dir="./cifar"
+        data_dir="./data/cifar"
     )
     
     # Model
@@ -241,7 +241,7 @@ def main():
     }
     
     wandb.init(
-        project="hyperbolic-cifar100",
+        project="ICML_Hyperbolic",
         config=config,
         name="baseline-run"
     )

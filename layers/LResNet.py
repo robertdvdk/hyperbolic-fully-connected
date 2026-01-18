@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 from typing import Optional, Type
 from .lorentz import Lorentz
-from .lorentz_fc import Lorentz_fully_connected
+from .LLinear import LorentzFullyConnected
 from .LProjection import EuclideanToLorentzConv
 from .LResBlock import LorentzResBlock
 
@@ -33,7 +33,7 @@ class LorentzResNet(nn.Module):
         self.stage4 = self._make_stage(base_dim * 4, base_dim * 8, layers[3], stride=2, activation=activation)
         
         # Classifier
-        self.classifier = Lorentz_fully_connected(
+        self.classifier = LorentzFullyConnected(
             in_features=base_dim * 8,
             out_features=num_classes + 1,
             manifold=self.manifold,

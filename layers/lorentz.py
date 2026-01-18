@@ -190,9 +190,6 @@ class Lorentz(nn.Module):
         Returns:
             Projected point dim [batch_size, dim]
         """
-        # print(torch.cat(
-        #     [torch.sqrt(1 / self.k() + x.pow(2).sum(-1, keepdim=True)), x], dim=-1
-        # ))
         return torch.cat(
             [torch.sqrt(1 / self.k() + x.pow(2).sum(-1, keepdim=True)), x], dim=-1
         )
@@ -451,59 +448,3 @@ class Lorentz(nn.Module):
         lmap_forward = self.logmap0_full(x)
 
         return v - (nom / denom) * (lmap + lmap_forward)
-    
-    # def distL(self, x, y):
-    #     """
-    #     Squared Lorentzian distance.
-    #     Args:
-    #          x: [batch, N, dim]
-    #          y: [batch, M, dim]
-    #     Returns:
-    #          dist: [batch, N, M]
-    #     """
-    #     xLy = x[..., 0] * y[..., 0] - (x[..., 1:] * y[..., 1:]).sum(dim=-1)
-    #     return -2 / self.k() + 2 * xLy
-    
-    # def dist(self, x, y, keepdim=False):
-    #     """
-    #     Hyperbolic Geodesic Distance (required for HNN++ Attention).
-        
-    #     Args:
-    #         x: [batch, N, D] (Queries)
-    #         y: [batch, M, D] (Keys)
-            
-    #     Returns:
-    #         dist: [batch, N, M]
-    #     """
-    #     if len(x.shape) == 1:
-    #         x = x.unsqueeze(0)  # Add batch dimension if missing
-    #     if len(y.shape) == 1:
-    #         y = y.unsqueeze(0)  # Add batch dimension if missing
-    #     # 1. Lorentz Inner Product (with broadcasting for pairwise computation)
-    #     # x: (B, N, 1, D)
-    #     # y: (B, 1, M, D)
-    #     x = x.unsqueeze(-2)
-    #     y = y.unsqueeze(-3)
-        
-    #     # -x0*y0 + x_space*y_space
-    #     # Note: We use the analytical formula directly rather than creating a massive intermediate tensor
-    #     time_prod = x[..., 0] * y[..., 0]
-    #     space_prod = (x[..., 1:] * y[..., 1:]).sum(dim=-1)
-        
-    #     # This is -<x, y>_L
-    #     neg_inner = time_prod - space_prod
-        
-    #     # 2. Clamping for Numerical Stability
-    #     # -<x, y>_L must be >= 1/k. 
-    #     # Floating point errors can push it slightly below, causing NaNs in acosh.
-    #     min_val = 1.0 / self.k() + 1e-7
-    #     neg_inner = torch.clamp(neg_inner, min=min_val)
-        
-    #     # 3. Geodesic Distance Formula: 1/sqrt(k) * acosh( -k * <x, y>_L )
-    #     sqrt_k = self.k().sqrt()
-    #     dist = (1.0 / sqrt_k) * torch.acosh(self.k() * neg_inner)
-        
-    #     if not keepdim:
-    #         dist = dist.squeeze(-1) # Remove the singleton dim from the inner product sum if it persisted
-            
-    #     return dist

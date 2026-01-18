@@ -1,7 +1,7 @@
 import torch.nn as nn
 
 from layers.lorentz import Lorentz
-from layers.lorentz_fc import Lorentz_fully_connected
+from layers.LLinear import LorentzFullyConnected
 from layers.bdeir import BdeirLorentzMLR
 from layers.poincare import Poincare, Poincare_distance2hyperplanes
 
@@ -31,7 +31,7 @@ class Lorentz_fully_connected_forward(nn.Module):
     ):
         super().__init__()
         self.manifold = Lorentz(k)
-        self.linear = Lorentz_fully_connected(
+        self.linear = LorentzFullyConnected(
             in_features, out_features, self.manifold, reset_params, activation
         )
 
@@ -54,7 +54,7 @@ class Lorentz_fully_connected_mlr_angle(nn.Module):
     ):
         super().__init__()
         self.manifold = Lorentz(k)
-        self.linear = Lorentz_fully_connected(
+        self.linear = LorentzFullyConnected(
             in_features, out_features, self.manifold, reset_params, activation
         )
 
@@ -77,7 +77,7 @@ class Lorentz_fully_connected_mlr_dist(nn.Module):
     ):
         super().__init__()
         self.manifold = Lorentz(k)
-        self.linear = Lorentz_fully_connected(
+        self.linear = LorentzFullyConnected(
             in_features, out_features, self.manifold, reset_params, activation
         )
 

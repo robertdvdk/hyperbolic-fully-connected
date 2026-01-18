@@ -16,7 +16,7 @@ sys.path.insert(0, str(parent_dir))
 
 # Attempt imports, assuming the directory structure is correct
 try:
-    from layers import Lorentz, Lorentz_fully_connected, ChenLinear, Poincare, Poincare_linear, project
+    from layers import Lorentz, LorentzFullyConnected, ChenLinear, Poincare, Poincare_linear, project
 except ImportError:
     print("⚠️  Could not import 'layers'. Ensure you are running this from the correct directory.")
     sys.exit(1)
@@ -127,7 +127,7 @@ def run_experiment(
 
     # Initialize Model
     if model_type == "ours":
-        model = Lorentz_fully_connected(
+        model = LorentzFullyConnected(
             in_features=dim,
             out_features=dim,
             manifold=manifold,

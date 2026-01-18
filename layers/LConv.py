@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .lorentz import Lorentz
-from .lorentz_fc import Lorentz_fully_connected
+from .LLinear import LorentzFullyConnected
 
 class LorentzConv2d(nn.Module):
     """
@@ -38,7 +38,7 @@ class LorentzConv2d(nn.Module):
         concat_dim = 1 + (in_channels - 1) * kernel_size[0] * kernel_size[1]
         
         # Reuse existing Lorentz FC
-        self.fc = Lorentz_fully_connected(
+        self.fc = LorentzFullyConnected(
             in_features=concat_dim,
             out_features=out_channels,
             manifold=self.manifold,
