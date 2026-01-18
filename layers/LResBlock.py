@@ -6,7 +6,7 @@ from .LBatchNorm import LorentzBatchNorm2d
 
 class LorentzResBlock(nn.Module):
     def __init__(
-        self, 
+        self,
         input_dim,
         output_dim,
         kernel_size,
@@ -14,17 +14,30 @@ class LorentzResBlock(nn.Module):
         padding,
         manifold,
         activation,
+        init_method: str = "kaiming",
     ):
-    
+
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
 
-        self.layer1 = LorentzConv2d(in_channels=input_dim, out_channels=input_dim, kernel_size=kernel_size, stride=1, padding=padding, manifold=manifold, activation=activation)
-        self.bn1 = LorentzBatchNorm2d(num_features = input_dim, manifold=manifold)
-        self.layer2 = LorentzConv2d(in_channels=input_dim, out_channels=output_dim, kernel_size=kernel_size, stride=stride, padding=padding, manifold=manifold, activation=nn.Identity())
-        self.bn2 = LorentzBatchNorm2d(num_features = output_dim, manifold=manifold)
+        self.layer1 = LorentzConv2d(
+            in_channels=input_dim, out_channels=input_dim,
+            kernel_size=kernel_size, stride=1, padding=padding,
+            manifold=manifold, activation=activation, init_method=init_method
+        )
+        self.bn1 = LorentzBatchNorm2d(num_features=input_dim, manifold=manifold)
+        self.layer2 = LorentzConv2d(
+            in_channels=input_dim, out_channels=output_dim,
+            kernel_size=kernel_size, stride=stride, padding=padding,
+            manifold=manifold, activation=nn.Identity(), init_method=init_method
+        )
+        self.bn2 = LorentzBatchNorm2d(num_features=output_dim, manifold=manifold)
         if input_dim != output_dim:
-            self.proj = LorentzConv2d(in_channels=input_dim, out_channels=output_dim, kernel_size=1, stride=stride, padding=0, manifold=manifold, activation=nn.Identity())
+            self.proj = LorentzConv2d(
+                in_channels=input_dim, out_channels=output_dim,
+                kernel_size=1, stride=stride, padding=0,
+                manifold=manifold, activation=nn.Identity(), init_method=init_method
+            )
         else:
             self.proj = nn.Identity()
 

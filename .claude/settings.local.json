@@ -2,7 +2,9 @@
   "permissions": {
     "allow": [
       "Bash(python3:*)",
-      "Bash(uv run python3:*)"
+      "Bash(uv run python3:*)",
+      "Bash(python:*)",
+      "Bash(source .venv/bin/activate)"
     ]
   }
 }

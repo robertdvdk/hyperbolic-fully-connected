@@ -9,7 +9,7 @@ from .LResBlock import LorentzResBlock
 
 class LorentzResNet(nn.Module):
     """ResNet architecture in Lorentz space."""
-    
+
     def __init__(
         self,
         input_dim: int = 3,
@@ -18,26 +18,28 @@ class LorentzResNet(nn.Module):
         layers: list[int] = [2, 2, 2, 2],  # ResNet18
         manifold: Optional[Lorentz] = None,
         activation: Type[nn.Module] = nn.ReLU,
+        init_method: str = "kaiming",
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
         self.base_dim = base_dim
-        
+        self.init_method = init_method
+
         # Initial projection: 3 -> 64
         self.input_proj = EuclideanToLorentzConv(input_dim, base_dim, self.manifold)
-        
+
         # ResNet stages
         self.stage1 = self._make_stage(base_dim, base_dim, layers[0], stride=1, activation=activation)
         self.stage2 = self._make_stage(base_dim, base_dim * 2, layers[1], stride=2, activation=activation)
         self.stage3 = self._make_stage(base_dim * 2, base_dim * 4, layers[2], stride=2, activation=activation)
         self.stage4 = self._make_stage(base_dim * 4, base_dim * 8, layers[3], stride=2, activation=activation)
-        
+
         # Classifier
         self.classifier = LorentzFullyConnected(
             in_features=base_dim * 8,
             out_features=num_classes + 1,
             manifold=self.manifold,
-            reset_params="kaiming",
+            reset_params=init_method,
             do_mlr=True
         )
     
@@ -51,7 +53,7 @@ class LorentzResNet(nn.Module):
     ) -> nn.Sequential:
         """Create a stage with multiple residual blocks."""
         blocks = []
-        
+
         # First block handles dimension change and downsampling
         blocks.append(
             LorentzResBlock(
@@ -61,10 +63,11 @@ class LorentzResNet(nn.Module):
                 stride=stride,
                 padding=1,
                 manifold=self.manifold,
-                activation=activation()
+                activation=activation(),
+                init_method=self.init_method,
             )
         )
-        
+
         # Remaining blocks maintain dimensions
         for _ in range(1, num_blocks):
             blocks.append(
@@ -75,10 +78,11 @@ class LorentzResNet(nn.Module):
                     stride=1,
                     padding=1,
                     manifold=self.manifold,
-                    activation=activation()
+                    activation=activation(),
+                    init_method=self.init_method,
                 )
             )
-        
+
         return nn.Sequential(*blocks)
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:

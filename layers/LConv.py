@@ -8,7 +8,7 @@ class LorentzConv2d(nn.Module):
     """
     Lorentz Conv2d using direct concatenation + existing Lorentz FC.
     """
-    
+
     def __init__(
         self,
         in_channels: int,
@@ -18,32 +18,33 @@ class LorentzConv2d(nn.Module):
         padding: int | tuple[int, int],
         manifold: Lorentz,
         activation,
+        init_method: str = "kaiming",
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
-        
+
         if isinstance(kernel_size, int):
             kernel_size = (kernel_size, kernel_size)
         if isinstance(stride, int):
             stride = (stride, stride)
         if isinstance(padding, int):
             padding = (padding, padding)
-        
+
         self.kernel_size = kernel_size
         self.stride = stride
         self.padding = padding
-        
+
         # After concatenating k*k Lorentz points:
         # concat_dim = 1 + (in_channels - 1) * k * k
         concat_dim = 1 + (in_channels - 1) * kernel_size[0] * kernel_size[1]
-        
+
         # Reuse existing Lorentz FC
         self.fc = LorentzFullyConnected(
             in_features=concat_dim,
             out_features=out_channels,
             manifold=self.manifold,
             activation=activation,
-            reset_params="kaiming"
+            reset_params=init_method
         )
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
