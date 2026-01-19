@@ -135,7 +135,7 @@ def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0):
 
 def evaluate(model, loader, device='cuda'):
     """Evaluate on a dataset, return avg loss and accuracy."""
-    model.eval()
+    model.train()
     running_loss, total_correct, total_samples = 0.0, 0, 0
 
     with torch.no_grad():
@@ -373,20 +373,20 @@ def main():
         # Model
         "hidden_dim": 64,
         "curvature": 1.0,
-        "init_method": "kaiming",
+        "init_method": "lorentz_kaiming",
 
         # Optimization
-        "optimizer": "adam",
-        "learning_rate": 1e-3,
-        "weight_decay": 0.0,
-        "momentum": 0.9,
+        "optimizer": "sgd",
+        "learning_rate": 1e-1,
+        "weight_decay": 2e-4,
+        "momentum": 0.92,
         "batch_size": 128,
         "num_epochs": 100,
         "grad_clip": 1.0,
 
         # Scheduler
-        "scheduler": "none",
-        "warmup_epochs": 0,
+        "scheduler": "cosine",
+        "warmup_epochs": 10,
         "lr_decay": 0.2,
 
         # Data
