@@ -135,7 +135,7 @@ def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0):
 
 def evaluate(model, loader, device='cuda'):
     """Evaluate on a dataset, return avg loss and accuracy."""
-    model.train()
+    model.eval()
     running_loss, total_correct, total_samples = 0.0, 0, 0
 
     with torch.no_grad():
@@ -248,7 +248,7 @@ def train(config=None):
         from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
 
         # Milestones at ~40%, 70%, 90% of training
-        milestones = get_config('milestones', [int(num_epochs * 0.4), int(num_epochs * 0.7), int(num_epochs * 0.9)])
+        milestones = get_config('milestones', [int(num_epochs * 0.3), int(num_epochs * 0.6), int(num_epochs * 0.8)])
         gamma = get_config('lr_decay', 0.2)
 
         if warmup_epochs > 0:
@@ -381,7 +381,7 @@ def main():
         "weight_decay": 2e-4,
         "momentum": 0.92,
         "batch_size": 128,
-        "num_epochs": 100,
+        "num_epochs": 200,
         "grad_clip": 1.0,
 
         # Scheduler
