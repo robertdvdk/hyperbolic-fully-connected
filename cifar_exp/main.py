@@ -302,6 +302,11 @@ def train(config=None):
             min_delta=get_config('early_stopping_min_delta', 0.0)
         )
 
+    # Create checkpoint directory
+    checkpoint_dir = Path(get_config('checkpoint_dir', './checkpoints'))
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    checkpoint_path = checkpoint_dir / f"best_model_{wandb.run.id}.pt"
+
     # Training loop
     best_val_acc = 0.0
     best_val_loss = float('inf')
@@ -341,6 +346,21 @@ def train(config=None):
             best_val_loss = val_loss
             wandb.run.summary["best_val_loss"] = best_val_loss
 
+            # Save model checkpoint
+            checkpoint = {
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': val_loss,
+                'val_acc': val_acc,
+                'config': dict(config) if isinstance(config, dict) else {k: getattr(config, k) for k in dir(config) if not k.startswith('_')}
+            }
+            if scheduler is not None:
+                checkpoint['scheduler_state_dict'] = scheduler.state_dict()
+
+            torch.save(checkpoint, checkpoint_path)
+            print(f"  → Saved checkpoint (val_loss: {val_loss:.4f})")
+
         print(f"Epoch {epoch+1}/{num_epochs} ({epoch_time:.1f}s)")
         print(f"  Train: loss={train_loss:.4f}, acc={train_acc:.4f}")
         print(f"  Val:   loss={val_loss:.4f}, acc={val_acc:.4f}")
@@ -377,11 +397,11 @@ def main():
 
         # Optimization
         "optimizer": "sgd",
-        "learning_rate": 1e-1,
-        "weight_decay": 2e-4,
-        "momentum": 0.92,
+        "learning_rate": 1e-2,
+        "weight_decay": 2.5e-4,
+        "momentum": 0.966,
         "batch_size": 128,
-        "num_epochs": 200,
+        "num_epochs": 500,
         "grad_clip": 1.0,
 
         # Scheduler
@@ -402,6 +422,9 @@ def main():
         "seed": 0,
         "compile": True,
         "evaluate_test": True,
+
+        # Checkpointing
+        "checkpoint_dir": "./checkpoints",
     }
 
     # wandb.init() will use sweep config if run by wandb agent,
