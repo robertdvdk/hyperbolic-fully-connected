@@ -26,17 +26,17 @@ class LorentzResNet(nn.Module):
         self.init_method = init_method
 
         # Initial projection: 3 -> 64
-        self.input_proj = EuclideanToLorentzConv(input_dim, base_dim, self.manifold)
+        self.input_proj = EuclideanToLorentzConv(input_dim, base_dim + 1, self.manifold)
 
         # ResNet stages
-        self.stage1 = self._make_stage(base_dim, base_dim, layers[0], stride=1, activation=activation)
-        self.stage2 = self._make_stage(base_dim, base_dim * 2, layers[1], stride=2, activation=activation)
-        self.stage3 = self._make_stage(base_dim * 2, base_dim * 4, layers[2], stride=2, activation=activation)
-        self.stage4 = self._make_stage(base_dim * 4, base_dim * 8, layers[3], stride=2, activation=activation)
+        self.stage1 = self._make_stage(base_dim + 1, base_dim + 1, layers[0], stride=1, activation=activation)
+        self.stage2 = self._make_stage(base_dim + 1, base_dim * 2 + 1, layers[1], stride=2, activation=activation)
+        self.stage3 = self._make_stage(base_dim * 2 + 1, base_dim * 4 + 1, layers[2], stride=2, activation=activation)
+        self.stage4 = self._make_stage(base_dim * 4 + 1, base_dim * 8 + 1, layers[3], stride=2, activation=activation)
 
         # Classifier
         self.classifier = LorentzFullyConnected(
-            in_features=base_dim * 8,
+            in_features=base_dim * 8 + 1,
             out_features=num_classes + 1,
             manifold=self.manifold,
             reset_params=init_method,

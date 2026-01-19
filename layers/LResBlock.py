@@ -25,7 +25,7 @@ class LorentzResBlock(nn.Module):
             kernel_size=kernel_size, stride=1, padding=padding,
             manifold=manifold, activation=activation, init_method=init_method
         )
-        self.bn1 = LorentzBatchNorm2d(num_features=input_dim, manifold=manifold)
+        self.bn1 = LorentzBatchNorm2d(num_features=output_dim, manifold=manifold)
         self.layer2 = LorentzConv2d(
             in_channels=output_dim, out_channels=output_dim,
             kernel_size=kernel_size, stride=stride, padding=padding,
