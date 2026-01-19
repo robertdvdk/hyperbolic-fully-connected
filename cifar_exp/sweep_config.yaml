@@ -53,7 +53,7 @@ parameters:
   seed:
     value: 0
   early_stopping:
-    value: true
+    value: false
   early_stopping_patience:
     value: 10
   grad_clip:
