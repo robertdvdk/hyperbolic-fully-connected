@@ -207,6 +207,9 @@ def train(config=None):
         manifold=manifold,
         activation=nn.ReLU,
         init_method=get_config('init_method', 'kaiming'),
+        do_mlr=get_config('do_mlr', 'angle'),
+        backbone_std_mult=get_config("backbone_std_mult", 1.0),
+        mlr_std_mult=get_config("mlr_std_mult", 1.0)
     ).to(device)
 
     if get_config('compile', True):
@@ -347,13 +350,21 @@ def train(config=None):
             wandb.run.summary["best_val_loss"] = best_val_loss
 
             # Save model checkpoint
+            # Convert wandb config to dict safely
+            if isinstance(config, dict):
+                config_dict = config
+            elif hasattr(config, '_items'):
+                config_dict = dict(config._items)
+            else:
+                config_dict = dict(config)
+
             checkpoint = {
                 'epoch': epoch + 1,
                 'model_state_dict': model.state_dict(),
                 'optimizer_state_dict': optimizer.state_dict(),
                 'val_loss': val_loss,
                 'val_acc': val_acc,
-                'config': dict(config) if isinstance(config, dict) else {k: getattr(config, k) for k in dir(config) if not k.startswith('_')}
+                'config': config_dict
             }
             if scheduler is not None:
                 checkpoint['scheduler_state_dict'] = scheduler.state_dict()
@@ -394,15 +405,18 @@ def main():
         "hidden_dim": 64,
         "curvature": 1.0,
         "init_method": "lorentz_kaiming",
+        "do_mlr": "dist",
 
         # Optimization
         "optimizer": "sgd",
-        "learning_rate": 1e-2,
-        "weight_decay": 2.5e-4,
-        "momentum": 0.966,
+        "learning_rate": 1e-1,
+        "weight_decay": 5e-4,
+        "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 500,
+        "num_epochs": 50,
         "grad_clip": 1.0,
+        "backbone_std_mult": 1.0,
+        "mlr_std_mult": 1.0,
 
         # Scheduler
         "scheduler": "cosine",
@@ -411,7 +425,7 @@ def main():
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 1.0,
+        "train_subset_fraction": 0.25,
         "data_split_seed": 42,
 
         # Early stopping
@@ -421,7 +435,7 @@ def main():
         # Misc
         "seed": 0,
         "compile": True,
-        "evaluate_test": True,
+        "evaluate_test": False,
 
         # Checkpointing
         "checkpoint_dir": "./checkpoints",

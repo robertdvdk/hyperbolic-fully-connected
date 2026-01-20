@@ -8,14 +8,14 @@ parameters:
   # Learning rate (log scale)
   learning_rate:
     distribution: log_uniform_values
-    min: 1e-2
+    min: 1e-3
     max: 2e-1
 
   # Weight decay (log scale)
   weight_decay:
     distribution: log_uniform_values
-    min: 3e-5
-    max: 1.5e-4
+    min: 1e-5
+    max: 2e-3
 
   # Scheduler
   scheduler:
@@ -26,12 +26,26 @@ parameters:
     distribution: uniform
     min: 0.9
     max: 0.99
+  
+  optimizer:
+    values: ["sgd", "adam"]
+
+  do_mlr:
+    values: ["dist", "angle"]
+
+  backbone_std_mult:
+    distribution: log_uniform_values
+    min: 0.25
+    max: 4.0
+
+  mlr_std_mult:
+    distribution: log_uniform_values
+    min: 0.25
+    max: 50.0
 
   # Fixed parameters for sweep
   num_epochs:
     value: 200
-  optimizer:
-    value: "sgd"
   warmup_epochs:
     value: 10
   batch_size:

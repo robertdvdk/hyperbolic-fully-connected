@@ -4,3 +4,5 @@ data/*
 
 cifar_exp/data/*
 cifar_exp/wandb/*
+HyperbolicCV/
+*.pt

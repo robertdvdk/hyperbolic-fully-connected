@@ -19,6 +19,8 @@ class LorentzConv2d(nn.Module):
         manifold: Lorentz,
         activation,
         init_method: str = "kaiming",
+        backbone_std_mult = 1.0,
+        mlr_std_mult = 1.0,
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
@@ -44,7 +46,9 @@ class LorentzConv2d(nn.Module):
             out_features=out_channels,
             manifold=self.manifold,
             activation=activation,
-            reset_params=init_method
+            reset_params=init_method,
+            backbone_std_mult=backbone_std_mult,
+            mlr_std_mult=mlr_std_mult
         )
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:
