@@ -21,12 +21,6 @@ parameters:
   scheduler:
     values: ["steplr", "cosine"]
 
-  # SGD momentum (only relevant when optimizer=sgd, but Bayesian will figure this out)
-  momentum:
-    distribution: uniform
-    min: 0.9
-    max: 0.99
-  
   optimizer:
     values: ["sgd", "adam"]
 
@@ -46,6 +40,8 @@ parameters:
   # Fixed parameters for sweep
   num_epochs:
     value: 200
+  momentum:
+    value: 0.9
   warmup_epochs:
     value: 10
   batch_size:
