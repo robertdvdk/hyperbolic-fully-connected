@@ -5,21 +5,17 @@ metric:
   goal: maximize
 
 parameters:
-  # Optimizer selection
-  optimizer:
-    values: ["adam", "sgd"]
-
   # Learning rate (log scale)
   learning_rate:
     distribution: log_uniform_values
-    min: 1e-3
+    min: 1e-2
     max: 2e-1
 
   # Weight decay (log scale)
   weight_decay:
     distribution: log_uniform_values
-    min: 1e-4
-    max: 1e-3
+    min: 3e-5
+    max: 1.5e-4
 
   # Scheduler
   scheduler:
@@ -34,6 +30,8 @@ parameters:
   # Fixed parameters for sweep
   num_epochs:
     value: 200
+  optimizer:
+    value: "sgd"
   warmup_epochs:
     value: 10
   batch_size:
