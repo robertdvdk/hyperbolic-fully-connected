@@ -44,6 +44,3 @@ openood = { git = "https://github.com/Jingkang50/OpenOOD" }
 
 [tool.setuptools]
 packages = ["layers"]
-
-[tool.uv.extra-build-dependencies]
-libmr = ["numpy", "cython"]
