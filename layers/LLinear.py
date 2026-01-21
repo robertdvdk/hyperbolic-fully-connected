@@ -13,6 +13,7 @@ class LorentzFullyConnected(nn.Module):
         a_default=0.0,
         activation=nn.functional.relu,
         do_mlr = False,
+        mlr_init: str | None = None,
     ):
         super().__init__()
         self.manifold = manifold
@@ -25,7 +26,7 @@ class LorentzFullyConnected(nn.Module):
         self.activation = activation
         self.do_mlr = do_mlr
         if do_mlr:
-            reset_params = "mlr"
+            reset_params = mlr_init if mlr_init is not None else "mlr"
         self.reset_parameters(reset_params=reset_params, a_default=a_default)
 
     def reset_parameters(self, reset_params, a_default):
@@ -46,9 +47,18 @@ class LorentzFullyConnected(nn.Module):
             self.a.data.fill_(a_default)
 
         elif reset_params == "mlr":
-            std = (1.0 / in_features) ** 0.5
+            std = (5.0 / in_features) ** 0.5
             with torch.no_grad():
                 self.U.data.normal_(0, std)
+            self.a.data.fill_(a_default)
+
+        elif reset_params == "mlr_eye":
+            if in_features <= out_features:
+                with torch.no_grad():
+                    self.U.data.copy_(0.5 * torch.eye(in_features, out_features))
+            else:
+                with torch.no_grad():
+                    self.U.data.copy_(0.5 * torch.eye(in_features, out_features))
             self.a.data.fill_(a_default)
         
 

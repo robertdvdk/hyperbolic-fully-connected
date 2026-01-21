@@ -4,7 +4,7 @@ import torch.nn as nn
 class EuclideanToLorentzConv(nn.Module):
     """Project Euclidean image onto Lorentz manifold via 1x1 conv."""
     
-    def __init__(self, in_channels, out_channels, manifold):
+    def __init__(self, in_channels, out_channels, manifold, proj_type: str = "conv_bn_relu"):
         """
         Args:
             in_channels: Euclidean channels (e.g., 3 for RGB)
@@ -12,10 +12,21 @@ class EuclideanToLorentzConv(nn.Module):
         """
         super().__init__()
         self.manifold = manifold
-        self.conv = nn.Conv2d(in_channels, out_channels - 1, kernel_size=1)
-        
-        nn.init.xavier_uniform_(self.conv.weight, gain=0.1)
-        nn.init.zeros_(self.conv.bias)
+        if proj_type == "conv":
+            self.proj = nn.Conv2d(in_channels, out_channels - 1, kernel_size=1)
+        elif proj_type == "conv_bn_relu":
+            self.proj = nn.Sequential(
+                nn.Conv2d(in_channels, out_channels - 1, kernel_size=1),
+                nn.BatchNorm2d(out_channels - 1),
+                nn.ReLU()
+            )
+        else:
+            raise ValueError(f"Unknown proj_type: {proj_type}")
+
+        conv = self.proj[0] if isinstance(self.proj, nn.Sequential) else self.proj
+        nn.init.xavier_uniform_(conv.weight, gain=0.1)
+        if conv.bias is not None:
+            nn.init.zeros_(conv.bias)
     
     def forward(self, x):
         """
@@ -24,7 +35,7 @@ class EuclideanToLorentzConv(nn.Module):
         Returns:
             [batch, out_channels, H, W] on Lorentz manifold (each pixel is a Lorentz point)
         """
-        space = self.conv(x)  # [batch, out_channels - 1, H, W]
+        space = self.proj(x)  # [batch, out_channels - 1, H, W])
         
         # Compute time component for each pixel
         # time = sqrt(||space||^2 + 1/k)

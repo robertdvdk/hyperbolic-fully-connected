@@ -20,6 +20,11 @@ class LorentzResNet(nn.Module):
         manifold: Optional[Lorentz] = None,
         activation: Type[nn.Module] = nn.ReLU,
         init_method: str = "kaiming",
+        input_proj_type: str = "conv_bn_relu",
+        proj_bn: bool = True,
+        residual_mode: str = "midpoint",
+        midpoint_relu: bool = False,
+        mlr_init: str = "mlr",
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
@@ -27,21 +32,63 @@ class LorentzResNet(nn.Module):
         self.init_method = init_method
 
         # Initial projection: 3 -> 64
-        self.input_proj = EuclideanToLorentzConv(input_dim, base_dim + 1, self.manifold)
+        self.input_proj = EuclideanToLorentzConv(
+            input_dim,
+            base_dim + 1,
+            self.manifold,
+            proj_type=input_proj_type,
+        )
 
         # ResNet stages
-        self.stage1 = self._make_stage(base_dim + 1, base_dim + 1, layers[0], stride=1, activation=activation)
-        self.stage2 = self._make_stage(base_dim + 1, base_dim * 2 + 1, layers[1], stride=2, activation=activation)
-        self.stage3 = self._make_stage(base_dim * 2 + 1, base_dim * 4 + 1, layers[2], stride=2, activation=activation)
-        self.stage4 = self._make_stage(base_dim * 4 + 1, base_dim * 8 + 1, layers[3], stride=2, activation=activation)
+        self.stage1 = self._make_stage(
+            base_dim + 1,
+            base_dim + 1,
+            layers[0],
+            stride=1,
+            activation=activation,
+            proj_bn=proj_bn,
+            residual_mode=residual_mode,
+            midpoint_relu=midpoint_relu,
+        )
+        self.stage2 = self._make_stage(
+            base_dim + 1,
+            base_dim * 2 + 1,
+            layers[1],
+            stride=2,
+            activation=activation,
+            proj_bn=proj_bn,
+            residual_mode=residual_mode,
+            midpoint_relu=midpoint_relu,
+        )
+        self.stage3 = self._make_stage(
+            base_dim * 2 + 1,
+            base_dim * 4 + 1,
+            layers[2],
+            stride=2,
+            activation=activation,
+            proj_bn=proj_bn,
+            residual_mode=residual_mode,
+            midpoint_relu=midpoint_relu,
+        )
+        self.stage4 = self._make_stage(
+            base_dim * 4 + 1,
+            base_dim * 8 + 1,
+            layers[3],
+            stride=2,
+            activation=activation,
+            proj_bn=proj_bn,
+            residual_mode=residual_mode,
+            midpoint_relu=midpoint_relu,
+        )
 
         # Classifier
         self.classifier = LorentzFullyConnected(
             in_features=base_dim * 8 + 1,
             out_features=num_classes + 1,
             manifold=self.manifold,
-            reset_params=init_method,
+            reset_params=mlr_init,
             do_mlr=True,
+            mlr_init=mlr_init,
         )
     
     def _make_stage(
@@ -51,6 +98,9 @@ class LorentzResNet(nn.Module):
         num_blocks: int,
         stride: int,
         activation: Type[nn.Module],
+        proj_bn: bool,
+        residual_mode: str,
+        midpoint_relu: bool,
     ) -> nn.Sequential:
         """Create a stage with multiple residual blocks."""
         blocks = []
@@ -66,6 +116,9 @@ class LorentzResNet(nn.Module):
                 manifold=self.manifold,
                 activation=activation(),
                 init_method=self.init_method,
+                proj_bn=proj_bn,
+                residual_mode=residual_mode,
+                midpoint_relu=midpoint_relu,
             )
         )
 
@@ -81,6 +134,9 @@ class LorentzResNet(nn.Module):
                     manifold=self.manifold,
                     activation=activation(),
                     init_method=self.init_method,
+                    proj_bn=proj_bn,
+                    residual_mode=residual_mode,
+                    midpoint_relu=midpoint_relu,
                 )
             )
 

@@ -202,16 +202,17 @@ def train(config=None):
 
     # Model
     manifold = Lorentz(k=get_config('curvature', 1.0))
-    # model = torchvision.models.resnet18()
-    # model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
-    # model.maxpool = nn.Identity()
-    # model.to(device)
     model = lorentz_resnet18(
         num_classes=100,
         base_dim=get_config('hidden_dim', 64),
         manifold=manifold,
         activation=nn.ReLU,
         init_method=get_config('init_method', 'lorentz_kaiming'),
+        input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
+        proj_bn=get_config('proj_bn', True),
+        residual_mode=get_config('residual_mode', 'midpoint'),
+        midpoint_relu=get_config('midpoint_relu', False),
+        mlr_init=get_config('mlr_init', 'mlr'),
     ).to(device)
 
     if get_config('compile', True):
@@ -408,6 +409,11 @@ def main():
         "hidden_dim": 64,
         "curvature": 1.0,
         "init_method": "lorentz_kaiming",
+        "input_proj_type": "conv_bn_relu",
+        "proj_bn": False,
+        "residual_mode": "midpoint",
+        "midpoint_relu": True,
+        "mlr_init": "mlr_eye",
 
         # Optimization
         "optimizer": "sgd",
