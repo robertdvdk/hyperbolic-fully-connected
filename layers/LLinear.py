@@ -24,6 +24,8 @@ class LorentzFullyConnected(nn.Module):
         
         self.activation = activation
         self.do_mlr = do_mlr
+        if do_mlr:
+            reset_params = "mlr"
         self.reset_parameters(reset_params=reset_params, a_default=a_default)
 
     def reset_parameters(self, reset_params, a_default):
@@ -36,11 +38,19 @@ class LorentzFullyConnected(nn.Module):
                 with torch.no_grad():
                     self.U.data.copy_(0.5 * torch.eye(in_features, out_features))
             
-        elif reset_params == "kaiming":
-            std = (2.0 / in_features) ** 0.5
+        elif reset_params == "lorentz_kaiming":
+            # For Lorentz models: divide std by 0.5 to account for time coordinate
+            std = (1.0 / in_features) ** 0.5
             with torch.no_grad():
                 self.U.data.normal_(0, std)
             self.a.data.fill_(a_default)
+
+        elif reset_params == "mlr":
+            std = (1.0 / in_features) ** 0.5
+            with torch.no_grad():
+                self.U.data.normal_(0, std)
+            self.a.data.fill_(a_default)
+        
 
         else:
             raise KeyError(f"Unknown reset_params value: {reset_params}")
