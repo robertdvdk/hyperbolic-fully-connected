@@ -212,9 +212,6 @@ def train(config=None):
         manifold=manifold,
         activation=nn.ReLU,
         init_method=get_config('init_method', 'kaiming'),
-        do_mlr=get_config('do_mlr', 'angle'),
-        backbone_std_mult=get_config("backbone_std_mult", 1.0),
-        mlr_std_mult=get_config("mlr_std_mult", 1.0)
     ).to(device)
 
     if get_config('compile', True):

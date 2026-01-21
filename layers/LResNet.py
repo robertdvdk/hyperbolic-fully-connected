@@ -20,7 +20,6 @@ class LorentzResNet(nn.Module):
         manifold: Optional[Lorentz] = None,
         activation: Type[nn.Module] = nn.ReLU,
         init_method: str = "kaiming",
-        do_mlr: bool = False,
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
@@ -42,7 +41,7 @@ class LorentzResNet(nn.Module):
             out_features=num_classes + 1,
             manifold=self.manifold,
             reset_params=init_method,
-            do_mlr=do_mlr,
+            do_mlr=True,
         )
     
     def _make_stage(
