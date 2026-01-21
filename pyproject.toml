@@ -23,11 +23,7 @@ dependencies = [
     "nltk>=3.9.2",
     "matplotlib>=3.10.7",
     "openood",
-    "numpy<2",
-    "libmr>=0.1.9",
-    "statsmodels>=0.14.6",
-    "timm>=1.0.24",
-    "foolbox>=3.3.4",
+    "numpy>=2.3.4",
 ]
 
 [project.optional-dependencies]
