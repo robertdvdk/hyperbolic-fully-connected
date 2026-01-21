@@ -91,3 +91,6 @@ class LorentzFullyConnected(nn.Module):
 
     def mlr(self, x):
         return self.signed_dist2hyperplanes_scaled_angle(x)
+    
+    def compute_V_auxiliary(self):
+        self.V_auxiliary = torch.nn.Parameter(self.create_spacelike_vector())

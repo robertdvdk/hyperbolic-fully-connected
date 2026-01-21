@@ -116,6 +116,16 @@ class LorentzResNet(nn.Module):
             x = x.permute(0, 2, 1)  # [B, H*W, C]
             x = self.manifold.lorentz_midpoint(x)  # [B, C]
             return x
+        
+    def compute_V_auxiliary(self):
+        def _maybe_compute(module: nn.Module) -> None:
+            if module is self:
+                return
+            method = getattr(module, "compute_V_auxiliary", None)
+            if callable(method):
+                method()
+
+        self.apply(_maybe_compute)
 
 
 # Factory functions for common architectures

@@ -446,7 +446,6 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
-        name="mlr_reset_params_same"
     )
 
     train(wandb.config)
