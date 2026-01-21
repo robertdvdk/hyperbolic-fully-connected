@@ -12,9 +12,7 @@ class LorentzFullyConnected(nn.Module):
         reset_params="eye",
         a_default=0.0,
         activation=nn.functional.relu,
-        do_mlr: str = "",
-        backbone_std_mult: float = 1.0,
-        mlr_std_mult: float = 1.0,
+        do_mlr = False,
     ):
         super().__init__()
         self.manifold = manifold
@@ -25,12 +23,7 @@ class LorentzFullyConnected(nn.Module):
         self.V_auxiliary = nn.Parameter(torch.randn(in_features + 1, out_features))
         
         self.activation = activation
-        self.backbone_std_mult = backbone_std_mult
-        self.mlr_std_mult = mlr_std_mult
-
         self.do_mlr = do_mlr
-        if do_mlr:
-            reset_params = do_mlr
         self.reset_parameters(reset_params=reset_params, a_default=a_default)
 
     def reset_parameters(self, reset_params, a_default):
@@ -42,55 +35,12 @@ class LorentzFullyConnected(nn.Module):
             else:
                 with torch.no_grad():
                     self.U.data.copy_(0.5 * torch.eye(in_features, out_features))
-        elif reset_params == "xavier":
-            # Xavier/Glorot: good for tanh, sigmoid, or no activation
-            std = (2.0 / (in_features + out_features)) ** 0.5
-            with torch.no_grad():
-                self.U.data.normal_(0, std)
-            self.a.data.fill_(a_default)
             
-        elif reset_params == "kaiming" or reset_params == "he":
-            # He initialization: good for ReLU
+        elif reset_params == "kaiming":
             std = (2.0 / in_features) ** 0.5
             with torch.no_grad():
                 self.U.data.normal_(0, std)
             self.a.data.fill_(a_default)
-            
-        elif reset_params == "lorentz_xavier":
-            # My derived initialization for when a != 0 (time contributes)
-            # Factor of 2 reduction due to time component
-            std = (1.0 / (in_features + out_features)) ** 0.5 * self.backbone_std_mult
-            with torch.no_grad():
-                self.U.data.normal_(0, std)
-            self.a.data.fill_(a_default)
-
-        elif reset_params == "orthogonal":
-            with torch.no_grad():
-                nn.init.orthogonal_(self.U)
-                # Scale to preserve expected norm for non-square
-                if in_features != out_features:
-                    self.U.data *= (in_features / out_features) ** 0.25
-            self.a.data.fill_(a_default)
-            
-        elif reset_params == "lorentz_kaiming":
-            # For ReLU with time contribution - the 2 from ReLU cancels with 1/2 from Lorentz
-            std = (1.0 / in_features) ** 0.5 * self.backbone_std_mult
-            with torch.no_grad():
-                self.U.data.normal_(0, std)
-            self.a.data.fill_(a_default)
-
-        elif reset_params == "angle":
-            # ||V|| inside arcsinh - need smaller weights for small logits
-            std = 0.02 * self.mlr_std_mult
-            with torch.no_grad():
-                self.U.data.normal_(0, std)
-            self.a.data.fill_(0.0)
-        
-        elif reset_params == "dist":
-            std = 0.02  * self.mlr_std_mult
-            with torch.no_grad():
-                self.U.data.normal_(0, std)
-            self.a.data.fill_(0.0)
 
         else:
             raise KeyError(f"Unknown reset_params value: {reset_params}")
@@ -130,7 +80,4 @@ class LorentzFullyConnected(nn.Module):
         return self.manifold.projection_space_orthogonal(output_space)
 
     def mlr(self, x):
-        if self.do_mlr == "dist":
-            return self.signed_dist2hyperplanes_scaled_dist(x)
-        elif self.do_mlr == "angle":
-            return self.signed_dist2hyperplanes_scaled_angle(x)
+        return self.signed_dist2hyperplanes_scaled_angle(x)

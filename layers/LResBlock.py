@@ -15,8 +15,6 @@ class LorentzResBlock(nn.Module):
         manifold,
         activation,
         init_method: str = "kaiming",
-        backbone_std_mult = 1.0,
-        mlr_std_mult = 1.0,
     ):
 
         super().__init__()
@@ -25,20 +23,20 @@ class LorentzResBlock(nn.Module):
         self.layer1 = LorentzConv2d(
             in_channels=input_dim, out_channels=output_dim,
             kernel_size=kernel_size, stride=1, padding=padding,
-            manifold=manifold, activation=activation, init_method=init_method, backbone_std_mult=backbone_std_mult, mlr_std_mult=mlr_std_mult
+            manifold=manifold, activation=activation, init_method=init_method
         )
         self.bn1 = LorentzBatchNorm2d(num_features=output_dim, manifold=manifold)
         self.layer2 = LorentzConv2d(
             in_channels=output_dim, out_channels=output_dim,
             kernel_size=kernel_size, stride=stride, padding=padding,
-            manifold=manifold, activation=nn.Identity(), init_method=init_method, backbone_std_mult=backbone_std_mult, mlr_std_mult=mlr_std_mult
+            manifold=manifold, activation=nn.Identity(), init_method=init_method
         )
         self.bn2 = LorentzBatchNorm2d(num_features=output_dim, manifold=manifold)
         if input_dim != output_dim:
             self.proj = LorentzConv2d(
                 in_channels=input_dim, out_channels=output_dim,
                 kernel_size=1, stride=stride, padding=0,
-                manifold=manifold, activation=nn.Identity(), init_method=init_method, backbone_std_mult=backbone_std_mult, mlr_std_mult=mlr_std_mult
+                manifold=manifold, activation=nn.Identity(), init_method=init_method
             )
         else:
             self.proj = nn.Identity()

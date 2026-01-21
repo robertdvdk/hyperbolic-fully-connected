@@ -11,6 +11,7 @@ import torch.nn.functional as F
 import torchvision
 from torch.utils.data import Subset, DataLoader
 import wandb
+import torchvision
 
 parent_dir = Path(__file__).parent
 sys.path.insert(0, str(parent_dir.parent))
@@ -201,6 +202,10 @@ def train(config=None):
 
     # Model
     manifold = Lorentz(k=get_config('curvature', 1.0))
+    # model = torchvision.models.resnet18()
+    # model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+    # model.maxpool = nn.Identity()
+    # model.to(device)
     model = lorentz_resnet18(
         num_classes=100,
         base_dim=get_config('hidden_dim', 64),
@@ -236,7 +241,8 @@ def train(config=None):
             model.parameters(),
             lr=lr,
             momentum=momentum,
-            weight_decay=weight_decay
+            weight_decay=weight_decay,
+            nesterov=True
         )
     else:
         raise ValueError(f"Unknown optimizer: {optimizer_name}")
@@ -404,19 +410,16 @@ def main():
         # Model
         "hidden_dim": 64,
         "curvature": 1.0,
-        "init_method": "lorentz_kaiming",
-        "do_mlr": "dist",
+        "init_method": "kaiming",
 
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 5e-4,
+        "weight_decay": 5e-5,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 50,
+        "num_epochs": 200,
         "grad_clip": 1.0,
-        "backbone_std_mult": 1.0,
-        "mlr_std_mult": 1.0,
 
         # Scheduler
         "scheduler": "cosine",
@@ -425,7 +428,7 @@ def main():
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 0.25,
+        "train_subset_fraction": 1.0,
         "data_split_seed": 42,
 
         # Early stopping

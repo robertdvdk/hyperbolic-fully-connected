@@ -20,16 +20,12 @@ class LorentzResNet(nn.Module):
         manifold: Optional[Lorentz] = None,
         activation: Type[nn.Module] = nn.ReLU,
         init_method: str = "kaiming",
-        do_mlr: str = "angle",
-        backbone_std_mult: float = 1.0,
-        mlr_std_mult: float = 1.0,
+        do_mlr: bool = False,
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
         self.base_dim = base_dim
         self.init_method = init_method
-        self.backbone_std_mult = backbone_std_mult
-        self.mlr_std_mult = mlr_std_mult
 
         # Initial projection: 3 -> 64
         self.input_proj = EuclideanToLorentzConv(input_dim, base_dim + 1, self.manifold)
@@ -47,8 +43,6 @@ class LorentzResNet(nn.Module):
             manifold=self.manifold,
             reset_params=init_method,
             do_mlr=do_mlr,
-            backbone_std_mult=backbone_std_mult,
-            mlr_std_mult=mlr_std_mult
         )
     
     def _make_stage(
@@ -73,8 +67,6 @@ class LorentzResNet(nn.Module):
                 manifold=self.manifold,
                 activation=activation(),
                 init_method=self.init_method,
-                backbone_std_mult=self.backbone_std_mult,
-                mlr_std_mult=self.mlr_std_mult
             )
         )
 
@@ -90,8 +82,6 @@ class LorentzResNet(nn.Module):
                     manifold=self.manifold,
                     activation=activation(),
                     init_method=self.init_method,
-                    backbone_std_mult=self.backbone_std_mult,
-                    mlr_std_mult=self.mlr_std_mult
                 )
             )
 
