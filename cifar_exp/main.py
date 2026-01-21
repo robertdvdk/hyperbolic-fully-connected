@@ -211,7 +211,7 @@ def train(config=None):
         base_dim=get_config('hidden_dim', 64),
         manifold=manifold,
         activation=nn.ReLU,
-        init_method=get_config('init_method', 'kaiming'),
+        init_method=get_config('init_method', 'lorentz_kaiming'),
     ).to(device)
 
     if get_config('compile', True):
@@ -407,7 +407,7 @@ def main():
         # Model
         "hidden_dim": 64,
         "curvature": 1.0,
-        "init_method": "kaiming",
+        "init_method": "lorentz_kaiming",
 
         # Optimization
         "optimizer": "sgd",
