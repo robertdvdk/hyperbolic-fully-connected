@@ -445,7 +445,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
-        name="new_activation_order_mult_bias"
+        name="new_activation_order_div_bias"
     )
 
     train(wandb.config)
