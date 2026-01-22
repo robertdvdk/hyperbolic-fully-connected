@@ -35,6 +35,10 @@ class Lorentz(nn.Module):
     def relu(self, x, manifold_dim):
         x_space = F.relu(x.narrow(dim=manifold_dim, start=1, length=x.shape[manifold_dim]-1))
         return self.projection_space_orthogonal(x_space, manifold_dim=manifold_dim)
+    
+    def preactivation_map(self, a):
+        y_space = 1 / self.k() * torch.sinh(self.k().sqrt() * a)
+        return self.projection_space_orthogonal(y_space, manifold_dim=1)
 
     def expmap0(self, x):
         """
