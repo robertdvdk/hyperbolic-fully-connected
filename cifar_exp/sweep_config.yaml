@@ -8,40 +8,29 @@ parameters:
   # Learning rate (log scale)
   learning_rate:
     distribution: log_uniform_values
-    min: 1e-2
+    min: 5e-3
     max: 2e-1
 
   # Weight decay (log scale)
   weight_decay:
     distribution: log_uniform_values
     min: 1e-5
-    max: 1e-3
+    max: 5e-3
 
-  # Architecture toggles
-  proj_bn:
-    values: [true, false]
-
-  input_proj_type:
-    values: ["conv", "conv_bn_relu"]
-
-  residual_mode:
-    values: ["midpoint", "add"]
-
-  midpoint_relu:
-    values: [true, false]
-
-  mlr_init:
-    values: ["mlr", "mlr_eye"]
+  scheduler:
+    values: ["cosine", "steplr"]
 
   # Fixed parameters for sweep
+  input_proj_type:
+    value: "conv_bn_relu"
+  mlr_init:
+    value: "mlr"
   num_epochs:
     value: 200
   momentum:
     value: 0.9
   optimizer:
     value: "sgd"
-  scheduler:
-    value: "cosine"
   warmup_epochs:
     value: 10
   batch_size:
