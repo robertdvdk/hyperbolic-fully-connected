@@ -19,7 +19,7 @@ echo "GPUs available: $(nvidia-smi -L)"
 
 # Launch 4 agents, one per GPU
 for i in 0 1 2 3; do
-    CUDA_VISIBLE_DEVICES=$i uv run wandb agent "robert-vdklis/hyperbolic-fully-connected-cifar_exp/6fku7x2d" &
+    CUDA_VISIBLE_DEVICES=$i uv run wandb agent "robert-vdklis/hyperbolic-fully-connected-cifar_exp/2mio72df" &
     echo "Started agent $i on GPU $i (PID: $!)"
 done
 
