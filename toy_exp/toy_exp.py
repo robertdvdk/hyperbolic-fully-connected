@@ -24,12 +24,13 @@ except ImportError:
 
 SEEDS = [0]
 # Testing distances: 1 to 50, step 3
-HYPERBOLIC_DISTANCES = range(1, 50)
+HYPERBOLIC_DISTANCES = range(1, 20)
 LEARNING_RATE = 0.001
-MAX_ITERATIONS = 50000
-LOSS_THRESHOLD = 0.01
+MAX_ITERATIONS = 10000
+# LOSS_THRESHOLD = 0.01
+ABS_DIST_THRESHOLD = 0.1
 BATCH_SIZE = 64
-DIM = 4
+DIM = 10
 
 # Output Files
 OUTPUT_TXT = "./hyperplane_convergence_results.txt"
@@ -115,6 +116,21 @@ def create_input_point(manifold: Union[Lorentz, Poincare], dim: int) -> torch.Te
         return point
 
 
+def poincare_dist(x: torch.Tensor, y: torch.Tensor, c: torch.Tensor) -> torch.Tensor:
+    """Geodesic distance on the Poincaré ball using Möbius addition."""
+    x2 = (x * x).sum(dim=-1, keepdim=True)
+    y2 = (y * y).sum(dim=-1, keepdim=True)
+    xy = (x * y).sum(dim=-1, keepdim=True)
+
+    num = (1 + 2 * c * xy + c * y2) * (-x) + (1 - c * x2) * y
+    den = 1 + 2 * c * xy + (c * c) * x2 * y2
+    mobius = num / den.clamp_min(1e-15)
+
+    mobius_norm = mobius.norm(dim=-1, keepdim=True).clamp_min(1e-15)
+    sqrt_c = c.sqrt()
+    return (2.0 / sqrt_c) * torch.atanh((sqrt_c * mobius_norm).clamp(max=0.9999))
+
+
 def run_experiment(
     hyperbolic_distance: int,
     seed: int,
@@ -128,8 +144,8 @@ def run_experiment(
     # Initialize Model
     if model_type == "ours":
         model = LorentzFullyConnected(
-            in_features=dim,
-            out_features=dim,
+            in_features=dim + 1,
+            out_features=dim + 1,
             manifold=manifold,
         ).double()
         optimizer = optim.SGD(model.parameters(), lr=LEARNING_RATE)
@@ -150,6 +166,7 @@ def run_experiment(
 
     x = create_input_point(manifold, dim)
     y = create_target_point(hyperbolic_distance, manifold, dim)
+    print(y)
     y = y.unsqueeze(0).repeat(BATCH_SIZE, 1)
 
     
@@ -160,46 +177,31 @@ def run_experiment(
     for i in range(MAX_ITERATIONS):
         optimizer.zero_grad()
         y_pred = model(x)
-        loss = tangent_space_mse_loss(y_pred, y, manifold)
+        if isinstance(manifold, Lorentz):
+            dist_to_target = manifold.dist(y_pred, y, keepdim=False)
+        else:
+            dist_to_target = poincare_dist(y_pred, y, manifold.c()).squeeze(-1)
 
-        if loss.item() < LOSS_THRESHOLD:
+        loss = dist_to_target.pow(2).mean()
+        mean_dist_to_target = dist_to_target.mean().item()
+
+        if mean_dist_to_target < ABS_DIST_THRESHOLD:
             # Calculate gradient norm for display
             total_grad_norm = sum(p.grad.norm().item() ** 2 for p in model.parameters() if p.grad is not None)
             grad_norms.append(np.sqrt(total_grad_norm))
-            
-            # Calculate predicted distance correctly based on manifold type
-            if isinstance(manifold, Lorentz):
-                # Distance from origin in Hyperboloid is acosh(time_component * sqrt_k) / sqrt_k
-                # Assuming origin is (1/k, 0...0)
-                time_val = y_pred[0, 0].item()
-                sqrt_k = manifold.k().sqrt().item()
-                # clamp for safety
-                val = max(1.0, time_val * sqrt_k)
-                pred_hyp_dist = (1.0 / sqrt_k) * np.arccosh(val)
-            else:
-                pred_norm = y_pred[0].norm().item()
-                sqrt_c = manifold.c().sqrt().item()
-                pred_hyp_dist = (2.0 / sqrt_c) * np.arctanh(min(sqrt_c * pred_norm, 0.9999))
 
             print(
                 f"  Step {i}: dist={hyperbolic_distance}, loss={loss.item():.6f}, "
-                f"grad_norm={grad_norms[-1]:.6e}, pred_hyp_dist={pred_hyp_dist:.4f}"
+                f"grad_norm={grad_norms[-1]:.6e}, dist_to_target={mean_dist_to_target:.4f}"
             )
             return i + 1
 
+        
+
+
         loss.backward()
 
-        # Gradient Scaling (Heuristic to help hyperbolic optimization)
-        total_param_norm = 0.0
-        for p in model.parameters():
-            if p.grad is not None:
-                total_param_norm += p.norm().item() ** 2
-        total_param_norm = np.sqrt(total_param_norm)
-
-        scale_factor = max(1.0, total_param_norm)
-        for p in model.parameters():
-            if p.grad is not None:
-                p.grad.mul_(scale_factor)
+        torch.nn.utils.clip_grad_norm(model.parameters(), 1)
         
         # Diagnostic Logging
         if i % 1000 == 0:
@@ -207,23 +209,9 @@ def run_experiment(
             total_grad_norm = sum(p.grad.norm().item() ** 2 for p in model.parameters() if p.grad is not None)
             grad_norms.append(np.sqrt(total_grad_norm))
             
-            # Calculate predicted distance correctly based on manifold type
-            if isinstance(manifold, Lorentz):
-                # Distance from origin in Hyperboloid is acosh(time_component * sqrt_k) / sqrt_k
-                # Assuming origin is (1/k, 0...0)
-                time_val = y_pred[0, 0].item()
-                sqrt_k = manifold.k().sqrt().item()
-                # clamp for safety
-                val = max(1.0, time_val * sqrt_k)
-                pred_hyp_dist = (1.0 / sqrt_k) * np.arccosh(val)
-            else:
-                pred_norm = y_pred[0].norm().item()
-                sqrt_c = manifold.c().sqrt().item()
-                pred_hyp_dist = (2.0 / sqrt_c) * np.arctanh(min(sqrt_c * pred_norm, 0.9999))
-
             print(
                 f"  Step {i}: dist={hyperbolic_distance}, loss={loss.item():.6f}, "
-                f"grad_norm={grad_norms[-1]:.6e}, pred_hyp_dist={pred_hyp_dist:.4f}"
+                f"grad_norm={grad_norms[-1]:.6e}, dist_to_target={mean_dist_to_target:.4f}"
             )
 
         optimizer.step()
@@ -295,8 +283,8 @@ def main():
     print("-" * 80)
 
     # Manifolds (Instantiate once)
-    lorentz_manifold = Lorentz(k=0.1)
-    poincare_manifold = Poincare(c=0.1)
+    lorentz_manifold = Lorentz(k=1.0)
+    poincare_manifold = Poincare(c=0.01)
 
     # Results Structure: results[model][distance] = {mean, std, raw}
     results = {m: {} for m in args.models}

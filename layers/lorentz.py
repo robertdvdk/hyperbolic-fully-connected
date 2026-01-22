@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, Tuple
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -31,6 +31,10 @@ class Lorentz(nn.Module):
             metric = torch.ones(x.size(-1), device=x.device, dtype=x.dtype)
         metric[0] = -1
         return (x * x * metric).sum(dim=-1, keepdim=True).sqrt()
+    
+    def relu(self, x, manifold_dim):
+        x_space = F.relu(x.narrow(dim=manifold_dim, start=1, length=x.shape[manifold_dim]-1))
+        return self.projection_space_orthogonal(x_space, manifold_dim=manifold_dim)
 
     def expmap0(self, x):
         """
@@ -113,6 +117,34 @@ class Lorentz(nn.Module):
 
         return factor.unsqueeze(-1) * (x - k_inner.unsqueeze(-1) * base_point)
     
+    def retr_transp(
+        self, x: torch.Tensor, u: torch.Tensor, v: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """
+        Perform a retraction + vector transport at once.
+
+        Parameters
+        ----------
+        x : torch.Tensor
+            point on the manifold
+        u : torch.Tensor
+            tangent vector at point :math:`x`
+        v : torch.Tensor
+            tangent vector at point :math:`x` to be transported
+
+        Returns
+        -------
+        Tuple[torch.Tensor, torch.Tensor]
+            transported point and vectors
+
+        Notes
+        -----
+        Sometimes this is a far more optimal way to preform retraction + vector transport
+        """
+        y = self.expmap(x, u)
+        v_transp = self.parallel_transport(x, v, y)
+        return y, v_transp
+    
     def expmap(self, base_point: torch.Tensor, v: torch.Tensor):
         if base_point.dim() == 2 and v.dim() == 3:
             base_point = base_point.unsqueeze(1)
@@ -181,7 +213,7 @@ class Lorentz(nn.Module):
         # Broadcasts: [B, M, 1] * ([B, 1, D] + [B, 1, D]) -> [B, M, D]
         return v + (numerator / denominator) * (x + y)
     
-    def projection_space_orthogonal(self, x):
+    def projection_space_orthogonal(self, x, manifold_dim=-1):
         """
         Projects a point onto the Lorentz model orthogonally from the space dimensions.
 
@@ -191,7 +223,7 @@ class Lorentz(nn.Module):
             Projected point dim [batch_size, dim]
         """
         return torch.cat(
-            [torch.sqrt(1 / self.k() + x.pow(2).sum(-1, keepdim=True)), x], dim=-1
+            [torch.sqrt(1 / self.k() + x.pow(2).sum(dim=manifold_dim, keepdim=True)), x], dim=manifold_dim
         )
 
     def poincare_to_lorentz(self, x_poincare: torch.Tensor):
@@ -253,6 +285,26 @@ class Lorentz(nn.Module):
         out = torch.cat([time, space], dim=-1)
         # assert torch.allclose(-out[..., 0]**2 + (out[..., 1:]**2).sum(dim=-1), -1.0 / self.k(), atol=1e-2), "Output tensor does not lie on the Lorentz manifold."
         return out
+    
+    def assert_check_point(self, data):
+        pass
+
+    def egrad2rgrad(self, x, grad, dim: int = -1):
+        grad.narrow(-1, 0, 1).mul_(-1)
+        grad = grad.addcmul(self._inner(x, grad, dim=dim, keepdim=True), x / self.k())
+        return grad
+    
+    def _inner(self, u, v, keepdim: bool = False, dim: int = -1):
+        d = u.size(dim) - 1
+        uv = u * v
+        if keepdim is False:
+            return -uv.narrow(dim, 0, 1).sum(dim=dim, keepdim=False) + uv.narrow(
+                dim, 1, d
+            ).sum(dim=dim, keepdim=False)
+        else:
+            return torch.cat((-uv.narrow(dim, 0, 1), uv.narrow(dim, 1, d)), dim=dim).sum(
+                dim=dim, keepdim=True
+            )
     
     def lorentz_midpoint(self, xs: torch.Tensor, weights: Optional[torch.Tensor] = None):
         """

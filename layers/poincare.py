@@ -8,7 +8,7 @@ def project(x: torch.Tensor, c: torch.Tensor, dim: int = -1, eps: float = -1.0):
         if x.dtype == torch.float32:
             eps = 4e-3
         else:
-            eps = 1e-5
+            eps = 1e-10
     maxnorm = (1 - eps) / ((c + 1e-15) ** 0.5)
     maxnorm = torch.where(c.gt(0), maxnorm, c.new_full((), 1e15))
     norm = x.norm(dim=dim, keepdim=True, p=2).clamp_min(1e-15)

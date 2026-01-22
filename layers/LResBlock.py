@@ -27,7 +27,7 @@ class LorentzResBlock(nn.Module):
         self.layer1 = LorentzConv2d(
             in_channels=input_dim, out_channels=output_dim,
             kernel_size=kernel_size, stride=1, padding=padding,
-            manifold=manifold, activation=activation, init_method=init_method
+            manifold=manifold, activation=nn.Identity(), init_method=init_method
         )
         self.bn1 = LorentzBatchNorm2d(num_features=output_dim, manifold=manifold)
         self.layer2 = LorentzConv2d(
@@ -56,31 +56,13 @@ class LorentzResBlock(nn.Module):
     def forward(self, x):
         x2 = self.layer1(x)
         x2 = self.bn1(x2)
+        x2 = self.manifold.relu(x2, manifold_dim=1)
         x2 = self.layer2(x2)
         x2 = self.bn2(x2)
+        
         x = self.proj(x)
+        out_space = x[:, 1:, :, :] + x2[:, 1:, :, :]
+        out = self.manifold.projection_space_orthogonal(out_space, manifold_dim=1)
+        out = self.manifold.relu(out, manifold_dim=1)
 
-        x = x.permute(0, 2, 3, 1)
-        x2 = x2.permute(0, 2, 3, 1)
-
-        if self.residual_mode == "midpoint":
-            stacked = torch.stack([x, x2], dim=-2)
-            alpha = torch.sigmoid(self.alpha_logit)
-            weights = torch.stack([1 - alpha, alpha])
-            x = self.manifold.lorentz_midpoint(stacked, weights)
-
-            if self.midpoint_relu:
-                x_space = F.relu(x[..., 1:])
-                x = self.manifold.projection_space_orthogonal(x_space)
-        elif self.residual_mode == "add":
-            x_space = x[..., 1:]
-            x2_space = x2[..., 1:]
-            summed_space = x_space + x2_space
-            if self.midpoint_relu:
-                summed_space = F.relu(summed_space)
-            x = self.manifold.projection_space_orthogonal(summed_space)
-        else:
-            raise ValueError(f"Unknown residual_mode: {self.residual_mode}")
-
-        x = x.permute(0, 3, 1, 2)
-        return x
+        return out

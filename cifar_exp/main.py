@@ -410,18 +410,18 @@ def main():
         "curvature": 1.0,
         "init_method": "lorentz_kaiming",
         "input_proj_type": "conv_bn_relu",
-        "proj_bn": False,
+        "proj_bn": True,
         "residual_mode": "midpoint",
-        "midpoint_relu": True,
-        "mlr_init": "mlr_eye",
+        "midpoint_relu": False,
+        "mlr_init": "mlr",
 
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 5e-5,
+        "weight_decay": 1e-4,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 50,
+        "num_epochs": 200,
         "grad_clip": 1.0,
 
         # Scheduler
@@ -431,7 +431,7 @@ def main():
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 0.25,
+        "train_subset_fraction": 1.0,
         "data_split_seed": 42,
 
         # Early stopping
@@ -440,7 +440,7 @@ def main():
 
         # Misc
         "seed": 0,
-        "compile": True,
+        "compile": False,
         "evaluate_test": False,
 
         # Checkpointing
@@ -452,6 +452,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
+        name="new_activation_order"
     )
 
     train(wandb.config)
