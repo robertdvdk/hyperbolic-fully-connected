@@ -18,12 +18,8 @@ class LorentzResNet(nn.Module):
         num_classes: int = 100,
         layers: list[int] = [2, 2, 2, 2],  # ResNet18
         manifold: Optional[Lorentz] = None,
-        activation: Type[nn.Module] = nn.ReLU,
         init_method: str = "kaiming",
         input_proj_type: str = "conv_bn_relu",
-        proj_bn: bool = True,
-        residual_mode: str = "midpoint",
-        midpoint_relu: bool = False,
         mlr_init: str = "mlr",
     ):
         super().__init__()
@@ -45,40 +41,24 @@ class LorentzResNet(nn.Module):
             base_dim + 1,
             layers[0],
             stride=1,
-            activation=activation,
-            proj_bn=proj_bn,
-            residual_mode=residual_mode,
-            midpoint_relu=midpoint_relu,
         )
         self.stage2 = self._make_stage(
             base_dim + 1,
             base_dim * 2 + 1,
             layers[1],
             stride=2,
-            activation=activation,
-            proj_bn=proj_bn,
-            residual_mode=residual_mode,
-            midpoint_relu=midpoint_relu,
         )
         self.stage3 = self._make_stage(
             base_dim * 2 + 1,
             base_dim * 4 + 1,
             layers[2],
             stride=2,
-            activation=activation,
-            proj_bn=proj_bn,
-            residual_mode=residual_mode,
-            midpoint_relu=midpoint_relu,
         )
         self.stage4 = self._make_stage(
             base_dim * 4 + 1,
             base_dim * 8 + 1,
             layers[3],
             stride=2,
-            activation=activation,
-            proj_bn=proj_bn,
-            residual_mode=residual_mode,
-            midpoint_relu=midpoint_relu,
         )
 
         # Classifier
@@ -97,10 +77,6 @@ class LorentzResNet(nn.Module):
         out_dim: int,
         num_blocks: int,
         stride: int,
-        activation: Type[nn.Module],
-        proj_bn: bool,
-        residual_mode: str,
-        midpoint_relu: bool,
     ) -> nn.Sequential:
         """Create a stage with multiple residual blocks."""
         blocks = []
@@ -114,11 +90,7 @@ class LorentzResNet(nn.Module):
                 stride=stride,
                 padding=1,
                 manifold=self.manifold,
-                activation=activation(),
                 init_method=self.init_method,
-                proj_bn=proj_bn,
-                residual_mode=residual_mode,
-                midpoint_relu=midpoint_relu,
             )
         )
 
@@ -132,11 +104,7 @@ class LorentzResNet(nn.Module):
                     stride=1,
                     padding=1,
                     manifold=self.manifold,
-                    activation=activation(),
                     init_method=self.init_method,
-                    proj_bn=proj_bn,
-                    residual_mode=residual_mode,
-                    midpoint_relu=midpoint_relu,
                 )
             )
 

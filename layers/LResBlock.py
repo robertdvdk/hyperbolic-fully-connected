@@ -14,11 +14,7 @@ class LorentzResBlock(nn.Module):
         stride,
         padding,
         manifold,
-        activation,
         init_method: str = "kaiming",
-        proj_bn: bool = True,
-        residual_mode: str = "midpoint",
-        midpoint_relu: bool = False,
     ):
 
         super().__init__()
@@ -42,15 +38,10 @@ class LorentzResBlock(nn.Module):
                 kernel_size=1, stride=stride, padding=0,
                 manifold=manifold, activation=nn.Identity(), init_method=init_method
             )]
-            if proj_bn:
-                proj_layers.append(LorentzBatchNorm2d(num_features=output_dim, manifold=manifold))
+            proj_layers.append(LorentzBatchNorm2d(num_features=output_dim, manifold=manifold))
             self.proj = nn.Sequential(*proj_layers)
         else:
             self.proj = nn.Identity()
-
-        self.alpha_logit = nn.Parameter(torch.tensor(0.0))  # sigmoid(0) = 0.5
-        self.residual_mode = residual_mode
-        self.midpoint_relu = midpoint_relu
 
     
     def forward(self, x):

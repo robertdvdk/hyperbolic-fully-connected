@@ -7,3 +7,4 @@ cifar_exp/wandb/*
 HyperbolicCV/
 *.pt
 *.png
+msp.yml
