@@ -17,10 +17,9 @@ parameters:
     min: 1e-5
     max: 5e-3
 
-  scheduler:
-    values: ["cosine", "steplr"]
-
   # Fixed parameters for sweep
+  scheduler:
+    value: "cosine"
   input_proj_type:
     value: "conv_bn_relu"
   mlr_init:
