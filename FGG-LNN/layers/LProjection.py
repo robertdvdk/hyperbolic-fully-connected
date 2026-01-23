@@ -1,8 +1,8 @@
 import torch
 import torch.nn as nn
-from LConv import LorentzConv2d
+from .LConv import LorentzConv2d
 from LBatchNorm import LorentzBatchNorm2d
-from lorentz import Lorentz
+from .lorentz import Lorentz
 
 class EuclideanToLorentzConv(nn.Module):
     """Project Euclidean image onto Lorentz manifold via 1x1 conv."""
