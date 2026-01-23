@@ -135,6 +135,116 @@ def seed_everything(seed):
     torch.backends.cudnn.benchmark = False
 
 
+def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, device='cuda'):
+    """
+    Load a checkpoint and restore model, optimizer, and scheduler states.
+
+    Returns:
+        start_epoch: The epoch to resume from
+        checkpoint: The full checkpoint dict for inspection
+    """
+    print(f"Loading checkpoint from {checkpoint_path}")
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+
+    # Handle compiled models (state dict keys may have '_orig_mod.' prefix)
+    state_dict = checkpoint['model_state_dict']
+
+    # Try loading directly first
+    try:
+        model.load_state_dict(state_dict)
+    except RuntimeError:
+        # If model is compiled, keys might have _orig_mod prefix
+        new_state_dict = {}
+        for k, v in state_dict.items():
+            new_key = k.replace('_orig_mod.', '')
+            new_state_dict[new_key] = v
+        model.load_state_dict(new_state_dict)
+
+    if optimizer is not None and 'optimizer_state_dict' in checkpoint:
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+
+    if scheduler is not None and 'scheduler_state_dict' in checkpoint:
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
+    start_epoch = checkpoint.get('epoch', 0)
+    print(f"Loaded checkpoint from epoch {start_epoch}")
+    print(f"  Val loss: {checkpoint.get('val_loss', 'N/A')}")
+    print(f"  Val acc: {checkpoint.get('val_acc', 'N/A')}")
+
+    return start_epoch, checkpoint
+
+
+def inspect_model(model, dataloader, device='cuda'):
+    """
+    Inspect model state for debugging NaN issues.
+    Checks U_norm values in all LorentzFullyConnected layers and logit magnitudes.
+    """
+    model.eval()
+    print("\n" + "="*60)
+    print("MODEL INSPECTION")
+    print("="*60)
+
+    # Check U_norm in all layers
+    print("\n--- U_norm values in LorentzFullyConnected layers ---")
+    for name, module in model.named_modules():
+        if hasattr(module, 'U'):
+            U_norm = module.U.norm(dim=0)
+            print(f"{name}:")
+            print(f"  U_norm: min={U_norm.min().item():.6f}, max={U_norm.max().item():.6f}, mean={U_norm.mean().item():.6f}")
+            if hasattr(module, 'a'):
+                a_vals = module.a
+                print(f"  a: min={a_vals.min().item():.6f}, max={a_vals.max().item():.6f}, mean={a_vals.mean().item():.6f}")
+                # Check effective bias magnitude (a / U_norm)
+                effective = a_vals / U_norm
+                print(f"  a/U_norm: min={effective.min().item():.6f}, max={effective.max().item():.6f}")
+
+    # Check z and a in LorentzMLR
+    print("\n--- LorentzMLR parameters ---")
+    for name, module in model.named_modules():
+        if hasattr(module, 'z') and hasattr(module, 'a') and not hasattr(module, 'U'):
+            print(f"{name}:")
+            print(f"  z norm: min={module.z.norm(dim=-1).min().item():.6f}, max={module.z.norm(dim=-1).max().item():.6f}")
+            print(f"  a: min={module.a.min().item():.6f}, max={module.a.max().item():.6f}")
+
+    # Forward pass to check activations
+    print("\n--- Forward pass inspection ---")
+    with torch.no_grad():
+        x, y = next(iter(dataloader))
+        x = x.to(device)
+
+        # Get intermediate activations
+        x_proj = model.input_proj(x)
+        print(f"After input_proj: time=[{x_proj[:,0].min().item():.2f}, {x_proj[:,0].max().item():.2f}], "
+              f"space_norm={x_proj[:,1:].norm(dim=1).mean().item():.2f}")
+
+        x1 = model.stage1(x_proj)
+        print(f"After stage1: time=[{x1[:,0].min().item():.2f}, {x1[:,0].max().item():.2f}], "
+              f"space_norm={x1[:,1:].norm(dim=1).mean().item():.2f}")
+
+        x2 = model.stage2(x1)
+        print(f"After stage2: time=[{x2[:,0].min().item():.2f}, {x2[:,0].max().item():.2f}], "
+              f"space_norm={x2[:,1:].norm(dim=1).mean().item():.2f}")
+
+        x3 = model.stage3(x2)
+        print(f"After stage3: time=[{x3[:,0].min().item():.2f}, {x3[:,0].max().item():.2f}], "
+              f"space_norm={x3[:,1:].norm(dim=1).mean().item():.2f}")
+
+        x4 = model.stage4(x3)
+        print(f"After stage4: time=[{x4[:,0].min().item():.2f}, {x4[:,0].max().item():.2f}], "
+              f"space_norm={x4[:,1:].norm(dim=1).mean().item():.2f}")
+
+        x_pool = model._global_pool(x4)
+        print(f"After pool: time=[{x_pool[:,0].min().item():.2f}, {x_pool[:,0].max().item():.2f}], "
+              f"space_norm={x_pool[:,1:].norm(dim=-1).mean().item():.2f}")
+
+        logits = model.classifier(x_pool)
+        print(f"Logits: min={logits.min().item():.2f}, max={logits.max().item():.2f}, "
+              f"std={logits.std().item():.2f}, mean_abs={logits.abs().mean().item():.2f}")
+
+    print("="*60 + "\n")
+    model.train()
+
+
 def get_dataloaders(
     batch_size,
     data_dir,
@@ -319,9 +429,6 @@ def train(config=None):
         mlr_init=get_config('mlr_init', 'mlr'),
     ).to(device)
 
-    if get_config('compile', True):
-        model = torch.compile(model)
-
     # Log model size
     total_params = sum(p.numel() for p in model.parameters())
     wandb.config.update({"total_params": total_params}, allow_val_change=True)
@@ -333,6 +440,21 @@ def train(config=None):
     warmup_epochs = get_config('warmup_epochs', 0)
     num_epochs = get_config('num_epochs', 100)
     optimizer, scheduler = select_optimizer(model, lr=lr, weight_decay=weight_decay, warmup_epochs=warmup_epochs)
+
+    # Load checkpoint if specified
+    start_epoch = 0
+    checkpoint_path_load = get_config("resume_checkpoint", None)
+    if checkpoint_path_load:
+        start_epoch, ckpt = load_checkpoint(
+            checkpoint_path_load, model, optimizer, scheduler, device
+        )
+        # Inspect mode: just analyze and exit
+        if get_config('inspect_only', False):
+            inspect_model(model, train_loader, device)
+            return 0.0
+
+    if get_config('compile', True):
+        model = torch.compile(model)
 
     # if optimizer_name == "adam":
     #     optimizer = torch.optim.Adam(
@@ -427,8 +549,9 @@ def train(config=None):
     # Training loop
     best_val_acc = 0.0
     best_val_loss = float('inf')
+    debug_interval = get_config('debug_interval', 0)  # Set to e.g. 10 to inspect every 10 epochs
 
-    for epoch in range(num_epochs):
+    for epoch in range(start_epoch, num_epochs):
         start = time.time()
 
         train_loss, train_acc = train_epoch(
@@ -441,6 +564,10 @@ def train(config=None):
             scheduler.step()
 
         epoch_time = time.time() - start
+
+        # Debug inspection at intervals
+        if debug_interval > 0 and (epoch + 1) % debug_interval == 0:
+            inspect_model(model, train_loader, device)
 
         # Log metrics
         metrics = {
@@ -552,6 +679,9 @@ def main():
 
         # Checkpointing
         "checkpoint_dir": "./checkpoints",
+        "resume_checkpoint": None,  # Path to checkpoint to resume from
+        "inspect_only": False,      # If True, just inspect the model and exit
+        "debug_interval": 0,        # Inspect model every N epochs (0 to disable)
     }
 
     # wandb.init() will use sweep config if run by wandb agent,
@@ -559,12 +689,63 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
-        name="Our_repo_their_MLR_their_inproj_wd1e3_bigrun_their_optim"
     )
 
     train(wandb.config)
     wandb.finish()
 
 
+def inspect_checkpoint(checkpoint_path):
+    """
+    Standalone function to inspect a checkpoint without training.
+    Usage: python main.py --inspect path/to/checkpoint.pt
+    """
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    # Load checkpoint to get config
+    checkpoint = torch.load(checkpoint_path, map_location=device)
+    config = checkpoint.get('config', {})
+
+    print(f"Checkpoint from epoch {checkpoint.get('epoch', '?')}")
+    print(f"Val loss: {checkpoint.get('val_loss', '?')}")
+    print(f"Val acc: {checkpoint.get('val_acc', '?')}")
+    print(f"Config: {config}")
+
+    # Create model
+    manifold = Lorentz(k=config.get('curvature', 1.0))
+    model = lorentz_resnet18(
+        num_classes=100,
+        base_dim=config.get('hidden_dim', 64),
+        manifold=manifold,
+        init_method=config.get('init_method', 'lorentz_kaiming'),
+        input_proj_type=config.get('input_proj_type', 'conv_bn_relu'),
+        mlr_init=config.get('mlr_init', 'mlr'),
+    ).to(device)
+
+    # Load weights
+    load_checkpoint(checkpoint_path, model, device=device)
+
+    # Create minimal dataloader for inspection
+    _, val_loader, _ = get_dataloaders(
+        batch_size=32,
+        data_dir="./data/cifar",
+        val_fraction=0.1,
+        train_subset_fraction=1.0,
+        seed=42,
+    )
+
+    # Inspect
+    inspect_model(model, val_loader, device)
+
+
 if __name__ == "__main__":
-    main()
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--inspect', type=str, default=None,
+                        help='Path to checkpoint to inspect (skips training)')
+    args = parser.parse_args()
+
+    if args.inspect:
+        inspect_checkpoint(args.inspect)
+    else:
+        main()
