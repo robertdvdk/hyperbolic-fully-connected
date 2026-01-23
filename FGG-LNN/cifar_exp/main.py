@@ -4,7 +4,6 @@ import sys
 import time
 import random
 
-from geoopt.optim.rsgd import RiemannianSGD
 import numpy as np
 import torch
 import torch.nn as nn
@@ -13,11 +12,119 @@ import torchvision
 from torch.utils.data import Subset, DataLoader
 import wandb
 import torchvision
+from geoopt import ManifoldParameter
+from geoopt.optim import RiemannianSGD
 
 parent_dir = Path(__file__).parent
 sys.path.insert(0, str(parent_dir.parent))
 from layers import lorentz_resnet18, Lorentz
 
+
+def get_param_groups(model, lr_manifold, weight_decay_manifold):
+    no_decay = ["scale"]
+    k_params = ["manifold.k"]
+
+    parameters = [
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if p.requires_grad
+                and not any(nd in n for nd in no_decay)
+                and not isinstance(p, ManifoldParameter)
+                and not any(nd in n for nd in k_params)
+            ],
+        },
+        {
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if p.requires_grad
+                and isinstance(p, ManifoldParameter)
+            ],
+            'lr' : lr_manifold,
+            "weight_decay": weight_decay_manifold
+        },
+        {  # k parameters
+            "params": [
+                p
+                for n, p in model.named_parameters()
+                if p.requires_grad
+                and any(nd in n for nd in k_params)
+            ], 
+            "weight_decay": 0,
+            "lr": 1e-4
+        }
+    ]
+
+    return parameters
+
+def select_optimizer(model, lr, weight_decay, warmup_epochs):
+    """ Selects and sets up an available optimizer and returns it. """
+
+    model_parameters = get_param_groups(model, lr*0.2, weight_decay)
+    optimizer = RiemannianSGD(model_parameters, lr=lr, weight_decay=weight_decay, momentum=0.9, nesterov=True, stabilize=1)
+    from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
+    warmup_scheduler = LinearLR(optimizer,
+                                start_factor=0.01,
+                                end_factor=1.0,
+                                total_iters=warmup_epochs)
+    step_scheduler = MultiStepLR(
+        optimizer, milestones=[m - warmup_epochs for m in [60, 120, 160]], gamma=0.2
+    )
+    lr_scheduler = SequentialLR(optimizer,
+                                schedulers=[warmup_scheduler, step_scheduler],
+                                milestones=[warmup_epochs])
+    
+    return optimizer, lr_scheduler
+
+    # if args.optimizer == "RiemannianSGD":
+    #     optimizer = RiemannianSGD(model_parameters, lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True, stabilize=1)
+    # elif args.optimizer == "SGD":
+    #     optimizer = torch.optim.SGD(model_parameters, lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True)
+    # else:
+    #     raise "Optimizer not found. Wrong optimizer in configuration... -> " + args.model
+
+    # lr_scheduler = None
+    # if args.scheduler == "cosine":
+    #     from torch.optim.lr_scheduler import SequentialLR, CosineAnnealingLR, LinearLR
+    #     if args.warmup_epochs > 0:
+    #         warmup_scheduler = LinearLR(optimizer,
+    #                                     start_factor = 0.01,
+    #                                     end_factor=1.0,
+    #                                     total_iters=args.warmup_epochs)
+    #         cosine_scheduler = CosineAnnealingLR(optimizer,
+    #                                              T_max = args.num_epochs - args.warmup_epochs,
+    #                                              eta_min=0)
+    #         lr_scheduler = SequentialLR(optimizer,
+    #                                     schedulers=[warmup_scheduler, cosine_scheduler],
+    #                                     milestones=[args.warmup_epochs])
+    #     else:
+    #         lr_scheduler = CosineAnnealingLR(
+    #             optimizer,
+    #             T_max=args.num_epochs,
+    #             eta_min=0  # LR goes down to 0
+    #         )
+    # else:
+    #     from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
+    #     if args.warmup_epochs > 0:
+    #         warmup_scheduler = LinearLR(optimizer,
+    #                                     start_factor=0.01,
+    #                                     end_factor=1.0,
+    #                                     total_iters=args.warmup_epochs)
+    #         step_scheduler = MultiStepLR(
+    #             optimizer, milestones=[m - args.warmup_epochs for m in [60, 120, 160]], gamma=0.2
+    #         )
+    #         lr_scheduler = SequentialLR(optimizer,
+    #                                     schedulers=[warmup_scheduler, step_scheduler],
+    #                                     milestones=[args.warmup_epochs])
+    #     else:
+    #         lr_scheduler = MultiStepLR(
+    #             optimizer, milestones=[60, 120, 160], gamma=0.2
+    #         )
+        
+
+    # return optimizer, lr_scheduler
 
 def seed_everything(seed):
     random.seed(seed)
@@ -223,81 +330,86 @@ def train(config=None):
     optimizer_name = get_config('optimizer', 'adam').lower()
     lr = get_config('learning_rate', 1e-3)
     weight_decay = get_config('weight_decay', 0.0)
+    warmup_epochs = get_config('warmup_epochs', 0)
+    num_epochs = get_config('num_epochs', 100)
+    optimizer, scheduler = select_optimizer(model, lr=lr, weight_decay=weight_decay, warmup_epochs=warmup_epochs)
 
-    if optimizer_name == "adam":
-        optimizer = torch.optim.Adam(
-            model.parameters(),
-            lr=lr,
-            weight_decay=weight_decay
-        )
-    elif optimizer_name == "sgd":
-        momentum = get_config('momentum', 0.9)
-        # optimizer = torch.optim.SGD(
-        #     model.parameters(),
-        #     lr=lr,
-        #     momentum=momentum,
-        #     weight_decay=weight_decay,
-        #     nesterov=True
-        # )
-        optimizer = RiemannianSGD(params=model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True, stabilize=1)
-    else:
-        raise ValueError(f"Unknown optimizer: {optimizer_name}")
+    # if optimizer_name == "adam":
+    #     optimizer = torch.optim.Adam(
+    #         model.parameters(),
+    #         lr=lr,
+    #         weight_decay=weight_decay
+    #     )
+    # elif optimizer_name == "sgd":
+    #     momentum = get_config('momentum', 0.9)
+    #     optimizer = torch.optim.SGD(
+    #         model.parameters(),
+    #         lr=lr,
+    #         momentum=momentum,
+    #         weight_decay=weight_decay,
+    #         nesterov=True
+    #     )
+    #     # optimizer = RiemannianSGD(params=model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True, stabilize=1)
+    # else:
+    #     raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
     # Learning rate scheduler
-    scheduler = None
-    scheduler_type = get_config('scheduler', 'none').lower()
-    num_epochs = get_config('num_epochs', 100)
-    warmup_epochs = get_config('warmup_epochs', 0)
 
-    if scheduler_type == 'steplr':
-        from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
+    # optimizer, scheduler = select_optimizer(model, lr=lr, weight_decay=weight_decay, warmup_epochs=warmup_epochs)
+    # scheduler = None
+    # scheduler_type = get_config('scheduler', 'none').lower()
+    # num_epochs = get_config('num_epochs', 100)
+    # warmup_epochs = get_config('warmup_epochs', 0)
 
-        # Milestones at ~40%, 70%, 90% of training
-        milestones = get_config('milestones', [int(num_epochs * 0.3), int(num_epochs * 0.6), int(num_epochs * 0.8)])
-        gamma = get_config('lr_decay', 0.2)
+    # if scheduler_type == 'steplr':
+    #     from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
 
-        if warmup_epochs > 0:
-            warmup_scheduler = LinearLR(
-                optimizer,
-                start_factor=0.01,
-                end_factor=1.0,
-                total_iters=warmup_epochs
-            )
-            step_scheduler = MultiStepLR(
-                optimizer,
-                milestones=[m - warmup_epochs for m in milestones if m > warmup_epochs],
-                gamma=gamma
-            )
-            scheduler = SequentialLR(
-                optimizer,
-                schedulers=[warmup_scheduler, step_scheduler],
-                milestones=[warmup_epochs]
-            )
-        else:
-            scheduler = MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
+    #     # Milestones at ~40%, 70%, 90% of training
+    #     milestones = get_config('milestones', [int(num_epochs * 0.3), int(num_epochs * 0.6), int(num_epochs * 0.8)])
+    #     gamma = get_config('lr_decay', 0.2)
 
-    elif scheduler_type == 'cosine':
-        from torch.optim.lr_scheduler import SequentialLR, CosineAnnealingLR, LinearLR
+    #     if warmup_epochs > 0:
+    #         warmup_scheduler = LinearLR(
+    #             optimizer,
+    #             start_factor=0.01,
+    #             end_factor=1.0,
+    #             total_iters=warmup_epochs
+    #         )
+    #         step_scheduler = MultiStepLR(
+    #             optimizer,
+    #             milestones=[m - warmup_epochs for m in milestones if m > warmup_epochs],
+    #             gamma=gamma
+    #         )
+    #         scheduler = SequentialLR(
+    #             optimizer,
+    #             schedulers=[warmup_scheduler, step_scheduler],
+    #             milestones=[warmup_epochs]
+    #         )
+    #     else:
+    #         scheduler = MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
 
-        if warmup_epochs > 0:
-            warmup_scheduler = LinearLR(
-                optimizer,
-                start_factor=0.01,
-                end_factor=1.0,
-                total_iters=warmup_epochs
-            )
-            cosine_scheduler = CosineAnnealingLR(
-                optimizer,
-                T_max=num_epochs - warmup_epochs,
-                eta_min=lr * 0.01
-            )
-            scheduler = SequentialLR(
-                optimizer,
-                schedulers=[warmup_scheduler, cosine_scheduler],
-                milestones=[warmup_epochs]
-            )
-        else:
-            scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=lr * 0.01)
+    # elif scheduler_type == 'cosine':
+    #     from torch.optim.lr_scheduler import SequentialLR, CosineAnnealingLR, LinearLR
+
+    #     if warmup_epochs > 0:
+    #         warmup_scheduler = LinearLR(
+    #             optimizer,
+    #             start_factor=0.01,
+    #             end_factor=1.0,
+    #             total_iters=warmup_epochs
+    #         )
+    #         cosine_scheduler = CosineAnnealingLR(
+    #             optimizer,
+    #             T_max=num_epochs - warmup_epochs,
+    #             eta_min=lr * 0.01
+    #         )
+    #         scheduler = SequentialLR(
+    #             optimizer,
+    #             schedulers=[warmup_scheduler, cosine_scheduler],
+    #             milestones=[warmup_epochs]
+    #         )
+    #     else:
+    #         scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=lr * 0.01)
 
     # Early stopping
     early_stopping = None
@@ -413,7 +525,7 @@ def main():
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 1e-3,
+        "weight_decay": 5e-4,
         "momentum": 0.9,
         "batch_size": 128,
         "num_epochs": 200,
@@ -447,7 +559,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
-        name="Our_repo_their_MLR_their_batchnorm_no_gradclip_their_hyperparams_rsgd"
+        name="Our_repo_their_MLR_their_inproj_wd5e4_bigrun_their_optim"
     )
 
     train(wandb.config)
