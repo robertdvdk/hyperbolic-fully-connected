@@ -433,7 +433,7 @@ def main():
 
         # Misc
         "seed": 0,
-        "compile": True,
+        "compile": False,
         "evaluate_test": False,
 
         # Checkpointing
