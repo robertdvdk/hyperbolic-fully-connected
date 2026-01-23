@@ -525,7 +525,7 @@ def main():
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 5e-4,
+        "weight_decay": 1e-3,
         "momentum": 0.9,
         "batch_size": 128,
         "num_epochs": 200,
