@@ -27,7 +27,7 @@ class EuclideanToLorentzConv(nn.Module):
         #     raise ValueError(f"Unknown proj_type: {proj_type}")
 
         self.proj = nn.Sequential(
-            LorentzConv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1, stride=1, manifold=manifold, activation=nn.Identity()),
+            LorentzConv2d(in_channels=in_channels, out_channels=out_channels, kernel_size=3, padding=1, stride=1, manifold=manifold, activation=nn.Identity(), init_method="lorentz_kaiming"),
             LorentzBatchNorm2d(num_features=out_channels, manifold=manifold),
 
         )
