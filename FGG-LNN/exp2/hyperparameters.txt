@@ -1,0 +1,18 @@
+--dataset flowers --model lorentz_angle --lr 0.0017169684125471812 --curvature 0.0024167918765844263 --batch_size 64 --weight_decay 9.440515328289189e-06
+--dataset flowers --model lorentz_dist --lr 0.00457937199019305 --curvature 0.000959110821509957 --batch_size 64 --weight_decay 6.944117293611722e-06
+--dataset flowers --model lorentz_forward --lr 0.009510356683443801 --curvature 0.0004042981073941579 --batch_size 64 --weight_decay 1.4057742913326566e-05
+--dataset flowers --model euclidean --lr 0.008890626668901551 --batch_size 64 --weight_decay 0.0001533293258517165
+--dataset flowers --model poincare --lr 0.003774584246695056 --curvature 9.808847655329518e-05 --batch_size 64 --weight_decay 8.103042583468144e-05
+--dataset flowers --model bdeir --lr 0.007037327907890684 --curvature 0.007975461172414383 --batch_size 128 --weight_decay 1.7494640937759851e-06
+--dataset dogs-custom --model lorentz_forward --lr 0.0020498127748633716 --curvature 0.001116081543100562 --batch_size 64 --weight_decay 0.00043554168727519244
+--dataset dogs-custom --model lorentz_angle --lr 0.0015575558466407572 --curvature 0.0026044462443799393 --batch_size 64 --weight_decay 0.00036663492271813135
+--dataset dogs-custom --model lorentz_dist --lr 0.0025934975769118583 --curvature 0.012595652719909844 --batch_size 128 --weight_decay 0.00010566533665607574
+--dataset dogs-custom --model euclidean --lr 0.0004151468495464389 --batch_size 64 --weight_decay 1.2099357381935657e-05
+--dataset dogs-custom --model poincare --lr 0.00032593963200526276 --curvature 0.0002978055067487586 --batch_size 64 --weight_decay 8.115159066833684e-06
+--dataset dogs-custom --model bdeir --lr 0.0008048640804195666 --curvature 1.7118928325064546e-05 --batch_size 64 --weight_decay 3.07999215072048e-05
+--dataset aircraft --model lorentz_forward --lr 0.003964071680515729 --curvature 0.000967554461479087 --batch_size 64 --weight_decay 0.0003988553655483353
+--dataset aircraft --model lorentz_angle --lr 0.00711792042185352 --curvature 0.0013879901699553345 --batch_size 64 --weight_decay 1.3367393704400487e-05
+--dataset aircraft --model lorentz_dist --lr 0.004936500130266763 --curvature 0.0004664661265862643 --batch_size 64 --weight_decay 3.2056464854536035e-05
+--dataset aircraft --model poincare --lr 0.0035298520041622894 --curvature 0.00048581730348640857 --batch_size 64 --weight_decay 3.854127072268652e-05
+--dataset aircraft --model bdeir --lr 0.005548414622914713 --curvature 2.748318723093581e-05 --batch_size 64 --weight_decay 0.0005824276100685885
+--dataset aircraft --model euclidean --lr 0.009745795244365196 --batch_size 64 --weight_decay 0.0009618116925057345

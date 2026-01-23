@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from typing import Optional, Type
 from .lorentz import Lorentz
-from .LLinear import LorentzFullyConnected
+from .LLinear import LorentzFullyConnected, LorentzMLR
 from .LProjection import EuclideanToLorentzConv
 from .LResBlock import LorentzResBlock
 
@@ -62,13 +62,19 @@ class LorentzResNet(nn.Module):
         )
 
         # Classifier
-        self.classifier = LorentzFullyConnected(
-            in_features=base_dim * 8 + 1,
-            out_features=num_classes + 1,
-            manifold=self.manifold,
-            reset_params=mlr_init,
-            do_mlr=True,
-            mlr_init=mlr_init,
+        # self.classifier = LorentzFullyConnected(
+        #     in_features=base_dim * 8 + 1,
+        #     out_features=num_classes + 1,
+        #     manifold=self.manifold,
+        #     reset_params=mlr_init,
+        #     do_mlr=True,
+        #     mlr_init=mlr_init,
+        # )
+
+        self.classifier = LorentzMLR(
+            manifold = self.manifold,
+            num_features = base_dim * 8 + 1,
+            num_classes = num_classes + 1,
         )
     
     def _make_stage(
