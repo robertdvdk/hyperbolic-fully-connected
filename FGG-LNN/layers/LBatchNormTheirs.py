@@ -95,8 +95,8 @@ class LorentzBatchNorm2d(LorentzBatchNorm):
     def forward(self, x, momentum=0.1):
         """ x has to be in channel last representation -> Shape = bs x H x W x C """
         bs, c, h, w = x.shape
-        x = x.reshape(bs, -1, c)
+        x = x.permute(0, 2, 3, 1).reshape(bs, -1, c)
         x = super(LorentzBatchNorm2d, self).forward(x, momentum)
-        x = x.reshape(bs, c, h, w)
+        x = x.reshape(bs, h, w, c).permute(0, 3, 1, 2)
 
         return x

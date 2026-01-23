@@ -4,6 +4,7 @@ import sys
 import time
 import random
 
+from geoopt.optim.rsgd import RiemannianSGD
 import numpy as np
 import torch
 import torch.nn as nn
@@ -124,7 +125,7 @@ def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0):
         logits = model(x).squeeze()
         loss = F.cross_entropy(logits, y)
         loss.backward()
-        torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+        # torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
 
         running_loss += loss.item() * x.size(0)
@@ -231,13 +232,14 @@ def train(config=None):
         )
     elif optimizer_name == "sgd":
         momentum = get_config('momentum', 0.9)
-        optimizer = torch.optim.SGD(
-            model.parameters(),
-            lr=lr,
-            momentum=momentum,
-            weight_decay=weight_decay,
-            nesterov=True
-        )
+        # optimizer = torch.optim.SGD(
+        #     model.parameters(),
+        #     lr=lr,
+        #     momentum=momentum,
+        #     weight_decay=weight_decay,
+        #     nesterov=True
+        # )
+        optimizer = RiemannianSGD(params=model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True, stabilize=1)
     else:
         raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
@@ -411,20 +413,20 @@ def main():
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 1e-4,
+        "weight_decay": 1e-3,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 50,
+        "num_epochs": 200,
         "grad_clip": 1.0,
 
         # Scheduler
-        "scheduler": "cosine",
+        "scheduler": "steplr",
         "warmup_epochs": 10,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 0.25,
+        "train_subset_fraction": 1.0,
         "data_split_seed": 42,
 
         # Early stopping
@@ -445,7 +447,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
-        name="Our_repo_Their_MLR_their_inpproj"
+        name="Our_repo_their_MLR_their_batchnorm_no_gradclip_their_hyperparams_rsgd"
     )
 
     train(wandb.config)

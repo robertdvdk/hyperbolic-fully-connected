@@ -91,6 +91,20 @@ class Lorentz(nn.Module):
         # Compute the tangent vector (0, y_space) scaled by the factor
         return factor * y_space
     
+    def projx(self, x, *, dim=-1):
+        dn = x.size(dim) - 1
+        left_ = torch.sqrt(
+            self.k() + torch.norm(x.narrow(dim, 1, dn), p=2, dim=dim) ** 2
+        ).unsqueeze(dim)
+        right_ = x.narrow(dim, 1, dn)
+        proj = torch.cat((left_, right_), dim=dim)
+        return proj
+    
+    def proju(self, x, v, *, dim=-1):
+        v.addcmul(self._inner(x, v, dim=dim, keepdim=True), x / self.k())
+        return v
+
+    
     def logmap(self, base_point: torch.Tensor, x: torch.Tensor):
         """
         Logarithmic map for the Lorentz model at an arbitrary base point.

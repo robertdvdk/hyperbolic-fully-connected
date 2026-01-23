@@ -3,7 +3,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from .lorentz import Lorentz
 from .LConv import LorentzConv2d
-from .LBatchNorm import LorentzBatchNorm2d
+from .LBatchNormTheirs import LorentzBatchNorm2d
 
 class LorentzResBlock(nn.Module):
     def __init__(
