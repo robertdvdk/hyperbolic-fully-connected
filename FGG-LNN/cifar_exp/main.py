@@ -414,7 +414,7 @@ def main():
         "weight_decay": 1e-4,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 200,
+        "num_epochs": 50,
         "grad_clip": 1.0,
 
         # Scheduler
@@ -424,7 +424,7 @@ def main():
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 1.0,
+        "train_subset_fraction": 0.25,
         "data_split_seed": 42,
 
         # Early stopping
@@ -445,6 +445,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
+        name="Our_repo_Their_MLR_their_inpproj"
     )
 
     train(wandb.config)
