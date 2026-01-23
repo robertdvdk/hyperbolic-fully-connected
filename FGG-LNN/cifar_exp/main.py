@@ -559,7 +559,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
-        name="Our_repo_their_MLR_their_inproj_wd5e4_bigrun_their_optim"
+        name="Our_repo_their_MLR_their_inproj_wd1e3_bigrun_their_optim"
     )
 
     train(wandb.config)
