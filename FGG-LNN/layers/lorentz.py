@@ -15,13 +15,15 @@ class Lorentz(nn.Module):
         self, k: float = 0.1, requires_grad=False, constraining_strategy=nn.Identity()
     ):
         super().__init__()
-        k_value = torch.log(torch.exp(torch.tensor(k)) - 1)
-        self.c_softplus_inv = nn.Parameter(k_value, requires_grad=requires_grad)
-        self.constraining_strategy = constraining_strategy
+        # Store curvature as a buffer to avoid creating new tensors during forward.
+        self.register_buffer("_k", torch.tensor(float(k), dtype=torch.float32))
+        # k_value = torch.log(torch.exp(torch.tensor(k)) - 1)
+        # self.c_softplus_inv = nn.Parameter(k_value, requires_grad=requires_grad)
+        # self.constraining_strategy = constraining_strategy
 
     def k(self):
         """Returns the negative curvature of the Lorentz model."""
-        return F.softplus(self.c_softplus_inv)
+        return self._k
 
     def forward(self, x):
         return self.expmap0(x)
@@ -278,10 +280,10 @@ class Lorentz(nn.Module):
 
         """
         # Input check
-        time_sq = xs.narrow(dim=-1, start=0, length=1) ** 2
-        space_sq = xs.narrow(dim=-1, start=1, length=xs.size(-1)-1) ** 2
-        lorentz_norm_sq = -time_sq + space_sq.sum(dim=-1, keepdim=True)
-        target_norm = -1.0 / self.k()
+        # time_sq = xs.narrow(dim=-1, start=0, length=1) ** 2
+        # space_sq = xs.narrow(dim=-1, start=1, length=xs.size(-1)-1) ** 2
+        # lorentz_norm_sq = -time_sq + space_sq.sum(dim=-1, keepdim=True)
+        # target_norm = -1.0 / self.k()
 
         # Debug output
         # if not torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3):
@@ -294,7 +296,6 @@ class Lorentz(nn.Module):
         #     print(f"Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item():.6f}")
 
         # assert torch.allclose(lorentz_norm_sq, target_norm, atol=1e-3), f"Input tensors do not lie on the Lorentz manifold. Mean deviation: {torch.abs(lorentz_norm_sq - target_norm).mean().item()}"
-
         time_sq_sum = ((xs[..., 0]) ** 2).sum(dim=-1, keepdim=True)
         sqrt_arg = time_sq_sum - (xs.shape[-2] - 1) / self.k()
         eps = 1e-7
@@ -358,7 +359,7 @@ class Lorentz(nn.Module):
     # Alias for compatibility with HyperbolicCV
     centroid = lorentz_midpoint
 
-    def origin(self, dim: int) -> torch.Tensor:
+    def origin(self, dim: int, device = "cpu", dtype = torch.float32) -> torch.Tensor:
         """
         Returns the origin point on the Lorentz manifold.
 
@@ -368,7 +369,7 @@ class Lorentz(nn.Module):
         Returns:
             Origin point (sqrt(k), 0, 0, ..., 0).
         """
-        origin = torch.zeros(dim, device=self.c_softplus_inv.device, dtype=self.c_softplus_inv.dtype)
+        origin = torch.zeros(dim, device=device, dtype=dtype)
         origin[0] = self.k().sqrt()
         return origin
 
@@ -407,7 +408,7 @@ class Lorentz(nn.Module):
             dist = dist.squeeze(-1)
         return dist
     
-    # @torch._dynamo.disable
+    @torch._dynamo.disable
     def dist0(self, x: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
         """
         Geodesic distance from origin to x.
@@ -472,7 +473,7 @@ class Lorentz(nn.Module):
 
         return dist * nomin / nomin_norm
 
-    # @torch._dynamo.disable
+    @torch._dynamo.disable
     def transp0(self, y: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """
         Parallel transport from origin to y.
@@ -497,7 +498,7 @@ class Lorentz(nn.Module):
 
         return v - (nom / denom) * (lmap + lmap_back)
 
-    # @torch._dynamo.disable
+    @torch._dynamo.disable
     def transp0back(self, x: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """
         Parallel transport from x to origin.

@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .LConv import LorentzConv2d
-from .LBatchNormTheirs import LorentzBatchNorm2d
+from .LBatchNorm import LorentzBatchNorm2d
 from .lorentz import Lorentz
 
 class EuclideanToLorentzConv(nn.Module):

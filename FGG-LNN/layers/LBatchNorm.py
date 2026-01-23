@@ -3,7 +3,7 @@ import torch.nn as nn
 from .lorentz import Lorentz
 from geoopt import ManifoldParameter
 
-class LorentzBatchNormOurs(nn.Module):
+class LorentzBatchNorm(nn.Module):
     """
     Lorentz Batch Normalization following Bdeir et al.
     Simplified to use manifold primitives.
@@ -27,7 +27,7 @@ class LorentzBatchNormOurs(nn.Module):
         self.gamma = nn.Parameter(torch.ones((1,)))
         
         # Running statistics (store space components of centroid)
-        self.register_buffer('running_mean', torch.zeros(num_features - 1))
+        self.register_buffer('running_mean', self.manifold.origin(num_features))
         self.register_buffer('running_var', torch.ones(1,))
 
     
@@ -37,7 +37,7 @@ class LorentzBatchNormOurs(nn.Module):
             mean = self.manifold.centroid(x)
             if len(x.shape) == 3:
                 mean = self.manifold.centroid(mean)
-            origin = self.manifold.origin(C)
+            origin = self.manifold.origin(C, device=x.device, dtype=x.dtype)
             x_T = self.manifold.logmap(mean, x)
             x_T = self.manifold.parallel_transport(mean, x_T, origin)
 
@@ -55,23 +55,14 @@ class LorentzBatchNormOurs(nn.Module):
             output = self.manifold.expmap(self.beta, x_T)
 
             with torch.no_grad():
-                running_mean = self.manifold.expmap0(self.running_mean)
-                means = torch.concat((running_mean.unsqueeze(0), mean.detach().unsqueeze(0)), dim=0)
-                self.running_mean.copy_( ## WHY THIS??
-                    self.manifold.logmap0(
-                        self.manifold.centroid(
-                            means,
-                            weights=torch.tensor(((1 - self.momentum), self.momentum), device=means.device),
-                        )
-                    )
-                )
+                means = torch.concat((self.running_mean.unsqueeze(0), mean.detach().unsqueeze(0)), dim=0)
+                self.running_mean.copy_(self.manifold.centroid(means, weights=torch.tensor(((1 - self.momentum), self.momentum), device=means.device)))
                 self.running_var.copy_((1 - self.momentum)*self.running_var + self.momentum*var.detach())
         else:
             # Transport batch to origin (center batch)
-            origin = self.manifold.origin(C)
-            running_mean = self.manifold.expmap0(self.running_mean)
-            x_T = self.manifold.logmap(running_mean, x)
-            x_T = self.manifold.parallel_transport(running_mean, x_T, origin)
+            origin = self.manifold.origin(C, device=x.device, dtype=x.dtype)
+            x_T = self.manifold.logmap(self.running_mean, x)
+            x_T = self.manifold.parallel_transport(self.running_mean, x_T, origin)
 
             # Rescale batch
             x_T = x_T*(self.gamma/(self.running_var+self.eps))
@@ -83,19 +74,18 @@ class LorentzBatchNormOurs(nn.Module):
 
         return output
     
-class LorentzBatchNorm2dOurs(LorentzBatchNormOurs):
+class LorentzBatchNorm2d(LorentzBatchNorm):
     """ 2D Lorentz Batch Normalization with Centroid and Fréchet variance
     """
     def __init__(self, manifold: Lorentz, num_features: int):
-        super(LorentzBatchNorm2dOurs, self).__init__(num_features, manifold)
+        super(LorentzBatchNorm2d, self).__init__(num_features, manifold)
 
     def forward(self, x):
         """ x has to be in channel last representation -> Shape = bs x H x W x C """
         bs, c, h, w = x.shape
         x = x.permute(0, 2, 3, 1).reshape(bs, -1, c)
-        x = super(LorentzBatchNorm2dOurs, self).forward(x)
+        x = super(LorentzBatchNorm2d, self).forward(x)
         x = x.reshape(bs, h, w, c).permute(0, 3, 1, 2)
-
         return x
 
 
