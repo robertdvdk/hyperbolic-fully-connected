@@ -406,7 +406,8 @@ class Lorentz(nn.Module):
         if not keepdim:
             dist = dist.squeeze(-1)
         return dist
-
+    
+    # @torch._dynamo.disable
     def dist0(self, x: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
         """
         Geodesic distance from origin to x.
@@ -471,6 +472,7 @@ class Lorentz(nn.Module):
 
         return dist * nomin / nomin_norm
 
+    # @torch._dynamo.disable
     def transp0(self, y: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """
         Parallel transport from origin to y.
@@ -495,6 +497,7 @@ class Lorentz(nn.Module):
 
         return v - (nom / denom) * (lmap + lmap_back)
 
+    # @torch._dynamo.disable
     def transp0back(self, x: torch.Tensor, v: torch.Tensor) -> torch.Tensor:
         """
         Parallel transport from x to origin.
