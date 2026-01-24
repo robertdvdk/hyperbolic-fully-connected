@@ -1,7 +1,7 @@
 import torch
 import torch.nn as nn
 from .LConv import LorentzConv2d
-from .LBatchNormTheirs import LorentzBatchNorm2d
+from .LBatchNormNew import LorentzBatchNorm2d
 from .lorentz import Lorentz
 
 class EuclideanToLorentzConv(nn.Module):
@@ -59,13 +59,3 @@ class EuclideanToLorentzConv(nn.Module):
         x = self.manifold.projection_space_orthogonal(x, manifold_dim=1)
         x = self.proj(x)
         return self.manifold.relu(x, manifold_dim=1)
-
-
-
-        # space = self.proj(x)  # [batch, out_channels - 1, H, W])
-        
-        # Compute time component for each pixel
-        # time = sqrt(||space||^2 + 1/k)
-        # time = torch.sqrt((space ** 2).sum(dim=1, keepdim=True) + 1.0 / self.manifold.k())
-        
-        # return torch.cat([time, space], dim=1)  # [batch, out_channels, H, W]

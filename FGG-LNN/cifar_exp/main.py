@@ -68,31 +68,31 @@ def get_param_groups(model, lr_manifold, weight_decay_manifold, verbose=False):
 
     return parameters
 
-def select_optimizer(model, lr, weight_decay, warmup_epochs):
-    """ Selects and sets up an available optimizer and returns it. """
+# def select_optimizer(model, lr, weight_decay, warmup_epochs):
+#     """ Selects and sets up an available optimizer and returns it. """
 
-    model_parameters = get_param_groups(model, lr*0.2, weight_decay, verbose=True)
-    optimizer = RiemannianSGD(model_parameters, lr=lr, weight_decay=weight_decay, momentum=0.9, nesterov=True, stabilize=1)
+#     model_parameters = get_param_groups(model, lr*0.2, weight_decay, verbose=True)
+#     optimizer = RiemannianSGD(model_parameters, lr=lr, weight_decay=weight_decay, momentum=0.9, nesterov=True, stabilize=1)
 
-    # Verify weight decay is being applied to gamma
-    print(f"\n--- Optimizer weight decay verification ---")
-    print(f"Optimizer-level weight_decay: {weight_decay}")
-    for i, group in enumerate(optimizer.param_groups):
-        wd = group.get('weight_decay', 'NOT SET')
-        print(f"Group {i}: weight_decay={wd}, num_params={len(group['params'])}")
-    from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
-    warmup_scheduler = LinearLR(optimizer,
-                                start_factor=0.01,
-                                end_factor=1.0,
-                                total_iters=warmup_epochs)
-    step_scheduler = MultiStepLR(
-        optimizer, milestones=[m - warmup_epochs for m in [60, 120, 160]], gamma=0.2
-    )
-    lr_scheduler = SequentialLR(optimizer,
-                                schedulers=[warmup_scheduler, step_scheduler],
-                                milestones=[warmup_epochs])
+    # # Verify weight decay is being applied to gamma
+    # print(f"\n--- Optimizer weight decay verification ---")
+    # print(f"Optimizer-level weight_decay: {weight_decay}")
+    # for i, group in enumerate(optimizer.param_groups):
+    #     wd = group.get('weight_decay', 'NOT SET')
+    #     print(f"Group {i}: weight_decay={wd}, num_params={len(group['params'])}")
+    # from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
+    # warmup_scheduler = LinearLR(optimizer,
+    #                             start_factor=0.01,
+    #                             end_factor=1.0,
+    #                             total_iters=warmup_epochs)
+    # step_scheduler = MultiStepLR(
+    #     optimizer, milestones=[m - warmup_epochs for m in [10, 20, 30]], gamma=0.2
+    # )
+    # lr_scheduler = SequentialLR(optimizer,
+    #                             schedulers=[warmup_scheduler, step_scheduler],
+    #                             milestones=[warmup_epochs])
     
-    return optimizer, lr_scheduler
+    # return optimizer, lr_scheduler
 
     # if args.optimizer == "RiemannianSGD":
     #     optimizer = RiemannianSGD(model_parameters, lr=args.lr, weight_decay=args.weight_decay, momentum=0.9, nesterov=True, stabilize=1)
@@ -381,13 +381,19 @@ def inspect_model(model, dataloader, device='cuda'):
         print(f"After stage4: time=[{x4[:,0].min().item():.2f}, {x4[:,0].max().item():.2f}], "
               f"space_norm={x4[:,1:].norm(dim=1).mean().item():.2f}")
 
-        x_pool = model._global_pool(x4)
-        print(f"After pool: time=[{x_pool[:,0].min().item():.2f}, {x_pool[:,0].max().item():.2f}], "
-              f"space_norm={x_pool[:,1:].norm(dim=-1).mean().item():.2f}")
+        x_tokens = x4.permute(0, 2, 3, 1).reshape(x4.shape[0], -1, x4.shape[1])
+        print(f"After flatten tokens: shape={tuple(x_tokens.shape)}, "
+            f"time=[{x_tokens[...,0].min().item():.2f}, {x_tokens[...,0].max().item():.2f}], "
+            f"space_norm={x_tokens[...,1:].norm(dim=-1).mean().item():.2f}")
 
-        logits = model.classifier(x_pool)
-        print(f"Logits: min={logits.min().item():.2f}, max={logits.max().item():.2f}, "
-              f"std={logits.std().item():.2f}, mean_abs={logits.abs().mean().item():.2f}")
+        token_logits = model.classifier(x_tokens)
+        print(f"After classifier (per-token): shape={tuple(token_logits.shape)}, "
+            f"min={token_logits.min().item():.2f}, max={token_logits.max().item():.2f}, "
+            f"std={token_logits.std().item():.2f}, mean_abs={token_logits.abs().mean().item():.2f}")
+
+        logits = token_logits.mean(dim=1)
+        print(f"Logits (mean over tokens): min={logits.min().item():.2f}, max={logits.max().item():.2f}, "
+            f"std={logits.std().item():.2f}, mean_abs={logits.abs().mean().item():.2f}")
 
     print("="*60 + "\n")
     model.train()
@@ -617,7 +623,7 @@ def train(config=None):
     weight_decay = get_config('weight_decay', 0.0)
     warmup_epochs = get_config('warmup_epochs', 0)
     num_epochs = get_config('num_epochs', 100)
-    optimizer, scheduler = select_optimizer(model, lr=lr, weight_decay=weight_decay, warmup_epochs=warmup_epochs)
+    # optimizer, scheduler = select_optimizer(model, lr=lr, weight_decay=weight_decay, warmup_epochs=warmup_epochs)
 
     # Load checkpoint if specified
     start_epoch = 0
@@ -634,82 +640,72 @@ def train(config=None):
     if get_config('compile', True):
         model = torch.compile(model)
 
-    # if optimizer_name == "adam":
-    #     optimizer = torch.optim.Adam(
-    #         model.parameters(),
-    #         lr=lr,
-    #         weight_decay=weight_decay
-    #     )
-    # elif optimizer_name == "sgd":
-    #     momentum = get_config('momentum', 0.9)
-    #     optimizer = torch.optim.SGD(
-    #         model.parameters(),
-    #         lr=lr,
-    #         momentum=momentum,
-    #         weight_decay=weight_decay,
-    #         nesterov=True
-    #     )
-    #     # optimizer = RiemannianSGD(params=model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True, stabilize=1)
-    # else:
-    #     raise ValueError(f"Unknown optimizer: {optimizer_name}")
+    if optimizer_name == "adam":
+        optimizer = torch.optim.Adam(
+            model.parameters(),
+            lr=lr,
+            weight_decay=weight_decay
+        )
+    elif optimizer_name == "sgd":
+        momentum = get_config('momentum', 0.9)
+        optimizer = RiemannianSGD(params=model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True, stabilize=1)
+    else:
+        raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
     # Learning rate scheduler
+    scheduler_type = get_config('scheduler', 'none').lower()
+    num_epochs = get_config('num_epochs', 100)
+    warmup_epochs = get_config('warmup_epochs', 0)
 
-    # optimizer, scheduler = select_optimizer(model, lr=lr, weight_decay=weight_decay, warmup_epochs=warmup_epochs)
-    # scheduler = None
-    # scheduler_type = get_config('scheduler', 'none').lower()
-    # num_epochs = get_config('num_epochs', 100)
-    # warmup_epochs = get_config('warmup_epochs', 0)
+    if scheduler_type == 'steplr':
+        from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
 
-    # if scheduler_type == 'steplr':
-    #     from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
+        # Milestones at ~40%, 70%, 90% of training
+        milestones = get_config('milestones', [int(num_epochs * 0.3), int(num_epochs * 0.6), int(num_epochs * 0.8)])
+        gamma = get_config('lr_decay', 0.2)
 
-    #     # Milestones at ~40%, 70%, 90% of training
-    #     milestones = get_config('milestones', [int(num_epochs * 0.3), int(num_epochs * 0.6), int(num_epochs * 0.8)])
-    #     gamma = get_config('lr_decay', 0.2)
+        if warmup_epochs > 0:
+            warmup_scheduler = LinearLR(
+                optimizer,
+                start_factor=0.01,
+                end_factor=1.0,
+                total_iters=warmup_epochs
+            )
+            step_scheduler = MultiStepLR(
+                optimizer,
+                milestones=[m - warmup_epochs for m in milestones if m > warmup_epochs],
+                gamma=gamma
+            )
+            scheduler = SequentialLR(
+                optimizer,
+                schedulers=[warmup_scheduler, step_scheduler],
+                milestones=[warmup_epochs]
+            )
+        else:
+            scheduler = MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
 
-    #     if warmup_epochs > 0:
-    #         warmup_scheduler = LinearLR(
-    #             optimizer,
-    #             start_factor=0.01,
-    #             end_factor=1.0,
-    #             total_iters=warmup_epochs
-    #         )
-    #         step_scheduler = MultiStepLR(
-    #             optimizer,
-    #             milestones=[m - warmup_epochs for m in milestones if m > warmup_epochs],
-    #             gamma=gamma
-    #         )
-    #         scheduler = SequentialLR(
-    #             optimizer,
-    #             schedulers=[warmup_scheduler, step_scheduler],
-    #             milestones=[warmup_epochs]
-    #         )
-    #     else:
-    #         scheduler = MultiStepLR(optimizer, milestones=milestones, gamma=gamma)
+    elif scheduler_type == 'cosine':
+        from torch.optim.lr_scheduler import SequentialLR, CosineAnnealingLR, LinearLR
 
-    # elif scheduler_type == 'cosine':
-    #     from torch.optim.lr_scheduler import SequentialLR, CosineAnnealingLR, LinearLR
-
-    #     if warmup_epochs > 0:
-    #         warmup_scheduler = LinearLR(
-    #             optimizer,
-    #             start_factor=0.01,
-    #             end_factor=1.0,
-    #             total_iters=warmup_epochs
-    #         )
-    #         cosine_scheduler = CosineAnnealingLR(
-    #             optimizer,
-    #             T_max=num_epochs - warmup_epochs,
-    #             eta_min=lr * 0.01
-    #         )
-    #         scheduler = SequentialLR(
-    #             optimizer,
-    #             schedulers=[warmup_scheduler, cosine_scheduler],
-    #             milestones=[warmup_epochs]
-    #         )
-    #     else:
-    #         scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=lr * 0.01)
+        if warmup_epochs > 0:
+            warmup_scheduler = LinearLR(
+                optimizer,
+                start_factor=0.01,
+                end_factor=1.0,
+                total_iters=warmup_epochs
+            )
+            cosine_scheduler = CosineAnnealingLR(
+                optimizer,
+                T_max=num_epochs - warmup_epochs,
+                eta_min=lr * 0.01
+            )
+            scheduler = SequentialLR(
+                optimizer,
+                schedulers=[warmup_scheduler, cosine_scheduler],
+                milestones=[warmup_epochs]
+            )
+        else:
+            scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=lr * 0.01)
 
     # Early stopping
     early_stopping = None
@@ -843,8 +839,8 @@ def main():
         "init_method": "lorentz_kaiming",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
-        "normalisation_mode": "fix_gamma",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
-        "mlr_type": "lorentz_mlr",  # "lorentz_mlr" or "fc_mlr"
+        "normalisation_mode": "clamp_scale",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
+        "mlr_type": "fc_mlr",  # "lorentz_mlr" or "fc_mlr"
 
         # Optimization
         "optimizer": "sgd",
@@ -852,17 +848,17 @@ def main():
         "weight_decay": 5e-4,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 200,
+        "num_epochs": 50,
         "grad_clip": 1.0,
 
         # Scheduler
-        "scheduler": "steplr",
+        "scheduler": "cosine",
         "warmup_epochs": 10,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 1.0,
+        "train_subset_fraction": 0.25,
         "data_split_seed": 42,
 
         # Early stopping
@@ -878,7 +874,7 @@ def main():
         "checkpoint_dir": "./checkpoints",
         "resume_checkpoint": None,  # Path to checkpoint to resume from
         "inspect_only": False,      # If True, just inspect the model and exit
-        "debug_interval": 1,       # Inspect model every N epochs (0 to disable)
+        "debug_interval": 5,       # Inspect model every N epochs (0 to disable)
     }
 
     # wandb.init() will use sweep config if run by wandb agent,
@@ -886,6 +882,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
+        name="ignore"
     )
 
     train(wandb.config)

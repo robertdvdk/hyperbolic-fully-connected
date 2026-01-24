@@ -168,10 +168,12 @@ class LorentzResNet(nn.Module):
         x = self.stage4(x)
         
         # Global pooling
-        x = self._global_pool(x)
+        x = x.permute(0, 2, 3, 1).reshape(x.shape[0], -1, x.shape[1])
+        x = self.classifier(x)
+        x = x.mean(dim=1)
         
         # Classification
-        return self.classifier(x)
+        return x
     
     def _global_pool(self, x: torch.Tensor) -> torch.Tensor:
         """Apply global average pooling in Lorentz space."""

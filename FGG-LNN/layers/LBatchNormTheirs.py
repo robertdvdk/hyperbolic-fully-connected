@@ -44,7 +44,7 @@ class LorentzBatchNorm(nn.Module):
 
             # Transport batch to origin (center batch)
             x_T = self.manifold.logmap(mean, x)
-            x_T = self.manifold.transp0back(mean, x_T)
+            x_T = self.manifold.transp_to_origin(mean, x_T)
 
             # Compute Fréchet variance (optional)
             if self.normalize_variance:
@@ -52,7 +52,6 @@ class LorentzBatchNorm(nn.Module):
                     var = torch.mean(torch.norm(x_T, dim=-1), dim=(0,1))
                 else:
                     var = torch.mean(torch.norm(x_T, dim=-1), dim=0)
-
                 div_factor = var + self.eps
             else:
                 div_factor = 1.0
@@ -64,7 +63,7 @@ class LorentzBatchNorm(nn.Module):
             x_T = x_T * scale
 
             # Transport batch to learned mean
-            x_T = self.manifold.transp0(beta, x_T)
+            x_T = self.manifold.transp_from_origin(x_T, beta)
             output = self.manifold.expmap(beta, x_T)
 
             # Save running parameters
@@ -86,7 +85,7 @@ class LorentzBatchNorm(nn.Module):
             # Transport batch to origin (center batch)
             running_mean = self.manifold.expmap0(self.running_mean)
             x_T = self.manifold.logmap(running_mean, x)
-            x_T = self.manifold.transp0back(running_mean, x_T)
+            x_T = self.manifold.transp_to_origin(running_mean, x_T)
 
             # Rescale batch
             if self.normalize_variance:
@@ -99,7 +98,7 @@ class LorentzBatchNorm(nn.Module):
             x_T = x_T * scale
 
             # Transport batch to learned mean
-            x_T = self.manifold.transp0(beta, x_T)
+            x_T = self.manifold.transp_from_origin(x_T, beta)
             output = self.manifold.expmap(beta, x_T)
 
 

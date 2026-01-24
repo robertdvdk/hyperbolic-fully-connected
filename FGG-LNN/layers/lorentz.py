@@ -232,7 +232,53 @@ class Lorentz(nn.Module):
         # 5. Compute Transport
         # Broadcasts: [B, M, 1] * ([B, 1, D] + [B, 1, D]) -> [B, M, D]
         return v + (numerator / denominator) * (x + y)
+
+    def transp_from_origin(self, tangent_vec: torch.Tensor, to_point: torch.Tensor):
+        """Parallel transport from origin to point y."""
+        # 1. Align dimensions for broadcasting
+        # We unsqueeze dim 1 so shapes become [Batch, 1, Dim] to match [Batch, M, Dim]
+        if tangent_vec.dim() == 3:
+            v = tangent_vec
+            y = to_point.unsqueeze(1)
+        else:
+            # Fallback for when all inputs are [Batch, Dim]
+            v, y = tangent_vec, to_point
+
+        sqrt_k = self.k().sqrt()
+        
+        # yLv = v_space · y_space (since v_0 = 0 at origin)
+        yLv = torch.sum(y[..., 1:] * v[..., 1:], dim=-1, keepdim=True)
+        
+        # denominator = 1/k + y_0/√k
+        denom = 1/self.k() + y[..., 0:1] / sqrt_k
+        
+        # origin + y
+        o_plus_y = torch.cat([y[..., 0:1] + 1/sqrt_k, y[..., 1:]], dim=-1)
+        
+        return v + (yLv / denom) * o_plus_y
     
+    def transp_to_origin(self, base_point: torch.Tensor, tangent_vec: torch.Tensor):
+        """Parallel transport from point x to origin."""
+        if tangent_vec.dim() == 3:
+            x = base_point.unsqueeze(1)
+            v = tangent_vec
+        else:
+            # Fallback for when all inputs are [Batch, Dim]
+            x, v = base_point, tangent_vec
+
+        sqrt_k = self.k().sqrt()
+        
+        # yLv = -v_0/√k (only time component matters)
+        yLv = -v[..., 0:1] / sqrt_k
+        
+        # denominator = 1/k + x_0/√k  
+        denom = 1/self.k() + x[..., 0:1] / sqrt_k
+        
+        # x + origin
+        x_plus_o = torch.cat([x[..., 0:1] + 1/sqrt_k, x[..., 1:]], dim=-1)
+        
+        return v + (yLv / denom) * x_plus_o
+
     def projection_space_orthogonal(self, x, manifold_dim=-1):
         """
         Projects a point onto the Lorentz model orthogonally from the space dimensions.
