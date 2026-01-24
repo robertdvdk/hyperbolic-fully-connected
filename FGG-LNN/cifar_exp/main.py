@@ -594,6 +594,7 @@ def train(config=None):
     # Model
     manifold = Lorentz(k_value=get_config('curvature', 1.0))
     normalisation_mode = get_config('normalisation_mode', get_config('bn_mode', 'normal'))
+    mlr_type = get_config('mlr_type', get_config('classifier_type', 'lorentz_mlr'))
     model = lorentz_resnet18(
         num_classes=100,
         base_dim=get_config('hidden_dim', 64),
@@ -602,6 +603,7 @@ def train(config=None):
         input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
         mlr_init=get_config('mlr_init', 'mlr'),
         normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
+        mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
     ).to(device)
 
     # Log model size
@@ -828,6 +830,7 @@ def main():
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
         "normalisation_mode": "fix_gamma",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
+        "mlr_type": "lorentz_mlr",  # "lorentz_mlr" or "fc_mlr"
 
         # Optimization
         "optimizer": "sgd",
@@ -902,6 +905,7 @@ def inspect_checkpoint(checkpoint_path):
         input_proj_type=config.get('input_proj_type', 'conv_bn_relu'),
         mlr_init=config.get('mlr_init', 'mlr'),
         normalisation_mode=config.get('normalisation_mode', config.get('bn_mode', 'normal')),
+        mlr_type=config.get('mlr_type', config.get('classifier_type', 'lorentz_mlr')),
     ).to(device)
 
     # Load weights

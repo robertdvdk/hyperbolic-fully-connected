@@ -22,6 +22,7 @@ class LorentzResNet(nn.Module):
         input_proj_type: str = "conv_bn_relu",
         mlr_init: str = "mlr",
         normalisation_mode: str = "normal",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
+        mlr_type: str = "lorentz_mlr",  # "lorentz_mlr" or "fc_mlr"
     ):
         """
         Args:
@@ -31,6 +32,9 @@ class LorentzResNet(nn.Module):
                 - "skip_final_bn2": Skip bn2 in the last ResBlock before classifier
                 - "clamp_scale": Clamp BN scale to [0.5, 2.0] without fixing gamma
                 - "mean_only": Mean-only normalization (no variance scaling)
+            mlr_type: Choose classifier head implementation.
+                - "lorentz_mlr": Use LorentzMLR
+                - "fc_mlr": Use LorentzFullyConnected with do_mlr=True
         """
         super().__init__()
         self.manifold = manifold or Lorentz(k_value=1.0)
@@ -53,6 +57,7 @@ class LorentzResNet(nn.Module):
             fix_gamma=self.fix_gamma,
             clamp_scale=self.clamp_scale,
             normalize_variance=self.normalize_variance,
+            init_method=self.init_method,
         )
 
         # ResNet stages
@@ -83,20 +88,23 @@ class LorentzResNet(nn.Module):
         )
 
         # Classifier
-        # self.classifier = LorentzFullyConnected(
-        #     in_features=base_dim * 8 + 1,
-        #     out_features=num_classes + 1,
-        #     manifold=self.manifold,
-        #     reset_params=mlr_init,
-        #     do_mlr=True,
-        #     mlr_init=mlr_init,
-        # )
-
-        self.classifier = LorentzMLR(
-            manifold = self.manifold,
-            num_features = base_dim * 8 + 1,
-            num_classes = num_classes,
-        )
+        if mlr_type == "fc_mlr":
+            self.classifier = LorentzFullyConnected(
+                in_features=base_dim * 8 + 1,
+                out_features=num_classes + 1,
+                manifold=self.manifold,
+                reset_params=mlr_init,
+                do_mlr=True,
+                mlr_init=mlr_init,
+            )
+        elif mlr_type == "lorentz_mlr":
+            self.classifier = LorentzMLR(
+                manifold=self.manifold,
+                num_features=base_dim * 8 + 1,
+                num_classes=num_classes,
+            )
+        else:
+            raise ValueError(f"Unknown mlr_type: {mlr_type}")
     
     def _make_stage(
         self,

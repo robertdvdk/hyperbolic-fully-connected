@@ -16,6 +16,7 @@ class EuclideanToLorentzConv(nn.Module):
         fix_gamma: bool = False,
         clamp_scale: bool = False,
         normalize_variance: bool = True,
+        init_method: str = "lorentz_kaiming",
     ):
         """
         Args:
@@ -24,11 +25,21 @@ class EuclideanToLorentzConv(nn.Module):
             fix_gamma: If True, fix gamma=1 in BatchNorm (not learnable)
             clamp_scale: If True, clamp BN scale to [0.5, 2.0]
             normalize_variance: If False, use mean-only normalization (no variance scaling)
+            init_method: Initialization method for LorentzConv2d
         """
         super().__init__()
         self.manifold = manifold
         self.proj = nn.Sequential(
-            LorentzConv2d(in_channels=in_channels + 1, out_channels=out_channels, kernel_size=3, padding=1, stride=1, manifold=manifold, activation=nn.Identity(), init_method="lorentz_kaiming"),
+            LorentzConv2d(
+                in_channels=in_channels + 1,
+                out_channels=out_channels,
+                kernel_size=3,
+                padding=1,
+                stride=1,
+                manifold=manifold,
+                activation=nn.Identity(),
+                init_method=init_method,
+            ),
             LorentzBatchNorm2d(
                 num_features=out_channels,
                 manifold=manifold,
