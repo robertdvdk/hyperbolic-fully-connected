@@ -868,21 +868,21 @@ def main():
 
         # Optimization
         "optimizer": "sgd",
-        "learning_rate": 1e-1,
-        "weight_decay": 5e-3,
+        "learning_rate": 5e-2,
+        "weight_decay": 1e-3,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 50,
+        "num_epochs": 200,
         "grad_clip": 1.0,
 
         # Scheduler
         "scheduler": "cosine",
-        "warmup_epochs": 5,
+        "warmup_epochs": 10,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 0.25,
+        "train_subset_fraction": 1.0,
         "data_split_seed": 42,
 
         # Early stopping
