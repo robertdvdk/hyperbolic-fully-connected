@@ -19,6 +19,7 @@ class LorentzConv2d(nn.Module):
         manifold: Lorentz,
         activation,
         init_method: str = "kaiming",
+        use_weight_norm: bool = False,
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k=1.0)
@@ -45,6 +46,7 @@ class LorentzConv2d(nn.Module):
             manifold=self.manifold,
             activation=activation,
             reset_params=init_method,
+            use_weight_norm=use_weight_norm,
         )
     
     def forward(self, x: torch.Tensor) -> torch.Tensor:

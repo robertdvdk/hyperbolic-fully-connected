@@ -19,6 +19,7 @@ class LorentzResBlock(nn.Module):
         fix_gamma: bool = False,  # Fix gamma=1 in all BatchNorms (forces linear layers to handle scaling)
         clamp_scale: bool = False,  # Clamp BN scale to [0.5, 2.0]
         normalize_variance: bool = True,  # If False, mean-only normalization (no variance scaling)
+        use_weight_norm: bool = False,
     ):
 
         super().__init__()
@@ -28,7 +29,8 @@ class LorentzResBlock(nn.Module):
         self.layer1 = LorentzConv2d(
             in_channels=input_dim, out_channels=output_dim,
             kernel_size=kernel_size, stride=1, padding=padding,
-            manifold=manifold, activation=nn.Identity(), init_method=init_method
+            manifold=manifold, activation=nn.Identity(), init_method=init_method,
+            use_weight_norm=use_weight_norm,
         )
         self.bn1 = LorentzBatchNorm2d(
             num_features=output_dim,
@@ -40,7 +42,8 @@ class LorentzResBlock(nn.Module):
         self.layer2 = LorentzConv2d(
             in_channels=output_dim, out_channels=output_dim,
             kernel_size=kernel_size, stride=stride, padding=padding,
-            manifold=manifold, activation=nn.Identity(), init_method=init_method
+            manifold=manifold, activation=nn.Identity(), init_method=init_method,
+            use_weight_norm=use_weight_norm,
         )
         self.bn2 = None if skip_bn2 else LorentzBatchNorm2d(
             num_features=output_dim,
@@ -53,7 +56,8 @@ class LorentzResBlock(nn.Module):
             proj_layers = [LorentzConv2d(
                 in_channels=input_dim, out_channels=output_dim,
                 kernel_size=1, stride=stride, padding=0,
-                manifold=manifold, activation=nn.Identity(), init_method=init_method
+                manifold=manifold, activation=nn.Identity(), init_method=init_method,
+                use_weight_norm=use_weight_norm,
             )]
             proj_layers.append(LorentzBatchNorm2d(
                 num_features=output_dim,

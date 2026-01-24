@@ -301,58 +301,58 @@ def inspect_model(model, dataloader, device='cuda'):
                       f"space_norm={x_bn2[:,1:].norm(dim=1).mean().item():.2f}")
 
                 # Detailed bn2 tracing if there's explosion
-                if x_bn2[:,0].max().item() > 1e6 or torch.isnan(x_bn2).any():
-                    print(f"\n    !!! EXPLOSION in bn2 - detailed trace !!!")
-                    bn = block.bn2
-                    m = bn.manifold
+                # if x_bn2[:,0].max().item() > 1e6 or torch.isnan(x_bn2).any():
+                #     print(f"\n    !!! EXPLOSION in bn2 - detailed trace !!!")
+                #     bn = block.bn2
+                #     m = bn.manifold
 
-                    # Reshape like bn2 does
-                    bs, c, h, w = x_l2.shape
-                    x_flat = x_l2.permute(0, 2, 3, 1).reshape(bs, -1, c)
+                #     # Reshape like bn2 does
+                #     bs, c, h, w = x_l2.shape
+                #     x_flat = x_l2.permute(0, 2, 3, 1).reshape(bs, -1, c)
 
-                    # Get running mean on manifold
-                    running_mean = m.expmap0(bn.running_mean)
-                    print(f"      running_mean: time={running_mean[0].item():.4f}, space_norm={running_mean[1:].norm().item():.4f}")
+                #     # Get running mean on manifold
+                #     running_mean = m.expmap0(bn.running_mean)
+                #     print(f"      running_mean: time={running_mean[0].item():.4f}, space_norm={running_mean[1:].norm().item():.4f}")
 
-                    # Logmap: map input to tangent space at running_mean
-                    x_T = m.logmap(running_mean, x_flat)
-                    tangent_norms = x_T.norm(dim=-1)  # [bs, H*W]
-                    print(f"      logmap tangent norms: min={tangent_norms.min().item():.4f}, max={tangent_norms.max().item():.4f}, "
-                          f"mean={tangent_norms.mean().item():.4f}, num>10={((tangent_norms > 10).sum().item())}")
+                #     # Logmap: map input to tangent space at running_mean
+                #     x_T = m.logmap(running_mean, x_flat)
+                #     tangent_norms = x_T.norm(dim=-1)  # [bs, H*W]
+                #     print(f"      logmap tangent norms: min={tangent_norms.min().item():.4f}, max={tangent_norms.max().item():.4f}, "
+                #           f"mean={tangent_norms.mean().item():.4f}, num>10={((tangent_norms > 10).sum().item())}")
 
-                    # Transp0back: transport to origin
-                    x_T = m.transp0back(running_mean, x_T)
-                    tangent_norms_after = x_T.norm(dim=-1)
-                    print(f"      after transp0back: norms min={tangent_norms_after.min().item():.4f}, max={tangent_norms_after.max().item():.4f}")
+                #     # Transp0back: transport to origin
+                #     x_T = m.transp0back(running_mean, x_T)
+                #     tangent_norms_after = x_T.norm(dim=-1)
+                #     print(f"      after transp0back: norms min={tangent_norms_after.min().item():.4f}, max={tangent_norms_after.max().item():.4f}")
 
-                    # Scaling
-                    scale_factor = bn.gamma / (bn.running_var + bn.eps)
-                    print(f"      scale factor: {scale_factor.item():.4f} (gamma={bn.gamma.item():.4f}, var={bn.running_var.item():.4f})")
-                    x_T_scaled = x_T * scale_factor
-                    scaled_norms = x_T_scaled.norm(dim=-1)
-                    print(f"      after scaling: norms min={scaled_norms.min().item():.4f}, max={scaled_norms.max().item():.4f}")
+                #     # Scaling
+                #     scale_factor = bn.gamma / (bn.running_var + bn.eps)
+                #     print(f"      scale factor: {scale_factor.item():.4f} (gamma={bn.gamma.item():.4f}, var={bn.running_var.item():.4f})")
+                #     x_T_scaled = x_T * scale_factor
+                #     scaled_norms = x_T_scaled.norm(dim=-1)
+                #     print(f"      after scaling: norms min={scaled_norms.min().item():.4f}, max={scaled_norms.max().item():.4f}")
 
-                    # Transport to beta
-                    beta = bn.beta
-                    print(f"      beta: time={beta[0].item():.4f}, space_norm={beta[1:].norm().item():.4f}")
-                    x_T_at_beta = m.transp0(beta, x_T_scaled)
-                    beta_norms = x_T_at_beta.norm(dim=-1)
-                    print(f"      after transp0 to beta: norms min={beta_norms.min().item():.4f}, max={beta_norms.max().item():.4f}")
+                #     # Transport to beta
+                #     beta = bn.beta
+                #     print(f"      beta: time={beta[0].item():.4f}, space_norm={beta[1:].norm().item():.4f}")
+                #     x_T_at_beta = m.transp0(beta, x_T_scaled)
+                #     beta_norms = x_T_at_beta.norm(dim=-1)
+                #     print(f"      after transp0 to beta: norms min={beta_norms.min().item():.4f}, max={beta_norms.max().item():.4f}")
 
-                    # Expmap: this is where explosion happens
-                    output = m.expmap(beta, x_T_at_beta)
-                    print(f"      after expmap: time=[{output[...,0].min().item():.2f}, {output[...,0].max().item():.2f}]")
+                #     # Expmap: this is where explosion happens
+                #     output = m.expmap(beta, x_T_at_beta)
+                #     print(f"      after expmap: time=[{output[...,0].min().item():.2f}, {output[...,0].max().item():.2f}]")
 
-                    # Find the specific positions that exploded
-                    time_vals = output[..., 0]
-                    max_idx = time_vals.argmax()
-                    batch_idx = max_idx // (h * w)
-                    spatial_idx = max_idx % (h * w)
-                    print(f"      Worst explosion at batch={batch_idx}, spatial={spatial_idx}")
-                    print(f"        input time: {x_flat[batch_idx, spatial_idx, 0].item():.4f}")
-                    print(f"        tangent norm after logmap: {tangent_norms[batch_idx, spatial_idx].item():.4f}")
-                    print(f"        scaled tangent norm: {scaled_norms[batch_idx, spatial_idx].item():.4f}")
-                    print()
+                #     # Find the specific positions that exploded
+                #     time_vals = output[..., 0]
+                #     max_idx = time_vals.argmax()
+                #     batch_idx = max_idx // (h * w)
+                #     spatial_idx = max_idx % (h * w)
+                #     print(f"      Worst explosion at batch={batch_idx}, spatial={spatial_idx}")
+                #     print(f"        input time: {x_flat[batch_idx, spatial_idx, 0].item():.4f}")
+                #     print(f"        tangent norm after logmap: {tangent_norms[batch_idx, spatial_idx].item():.4f}")
+                #     print(f"        scaled tangent norm: {scaled_norms[batch_idx, spatial_idx].item():.4f}")
+                #     print()
             else:
                 x_bn2 = x_l2  # No bn2, just pass through
                 print(f"    bn2: SKIPPED (skip_bn2=True)")
@@ -611,6 +611,7 @@ def train(config=None):
         mlr_init=get_config('mlr_init', 'mlr'),
         normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
+        use_weight_norm=get_config('use_weight_norm', False),
     ).to(device)
 
     # Log model size
@@ -718,7 +719,8 @@ def train(config=None):
     # Create checkpoint directory
     checkpoint_dir = Path(get_config('checkpoint_dir', './checkpoints'))
     checkpoint_dir.mkdir(parents=True, exist_ok=True)
-    checkpoint_path = checkpoint_dir / f"best_model_{wandb.run.id}.pt"
+    checkpoint_path_acc = checkpoint_dir / f"best_model_acc_{wandb.run.id}.pt"
+    checkpoint_path_loss = checkpoint_dir / f"best_model_loss_{wandb.run.id}.pt"
 
     # Training loop
     best_val_acc = 0.0
@@ -776,6 +778,28 @@ def train(config=None):
         if val_acc > best_val_acc:
             best_val_acc = val_acc
             wandb.run.summary["best_val_acc"] = best_val_acc
+            # Save model checkpoint
+            # Convert wandb config to dict safely
+            if isinstance(config, dict):
+                config_dict = config
+            elif hasattr(config, '_items'):
+                config_dict = dict(config._items)
+            else:
+                config_dict = dict(config)
+
+            checkpoint = {
+                'epoch': epoch + 1,
+                'model_state_dict': model.state_dict(),
+                'optimizer_state_dict': optimizer.state_dict(),
+                'val_loss': val_loss,
+                'val_acc': val_acc,
+                'config': config_dict
+            }
+            if scheduler is not None:
+                checkpoint['scheduler_state_dict'] = scheduler.state_dict()
+
+            torch.save(checkpoint, checkpoint_path_acc)
+            print(f"  → Saved checkpoint (best val_acc: {val_acc:.4f})")
 
         if val_loss < best_val_loss:
             best_val_loss = val_loss
@@ -801,8 +825,8 @@ def train(config=None):
             if scheduler is not None:
                 checkpoint['scheduler_state_dict'] = scheduler.state_dict()
 
-            torch.save(checkpoint, checkpoint_path)
-            print(f"  → Saved checkpoint (val_loss: {val_loss:.4f})")
+            torch.save(checkpoint, checkpoint_path_loss)
+            print(f"  → Saved checkpoint (best val_loss: {val_loss:.4f})")
 
         print(f"Epoch {epoch+1}/{num_epochs} ({epoch_time:.1f}s)")
         print(f"  Train: loss={train_loss:.4f}, acc={train_acc:.4f}")
@@ -839,26 +863,26 @@ def main():
         "init_method": "lorentz_kaiming",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
-        "normalisation_mode": "clamp_scale",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
+        "normalisation_mode": "centering_only",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         "mlr_type": "fc_mlr",  # "lorentz_mlr" or "fc_mlr"
 
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 5e-4,
+        "weight_decay": 5e-3,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 200,
+        "num_epochs": 50,
         "grad_clip": 1.0,
 
         # Scheduler
         "scheduler": "cosine",
-        "warmup_epochs": 10,
+        "warmup_epochs": 5,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 1.0,
+        "train_subset_fraction": 0.25,
         "data_split_seed": 42,
 
         # Early stopping
@@ -871,10 +895,11 @@ def main():
         "evaluate_test": False,
 
         # Checkpointing
-        "checkpoint_dir": "./checkpoints",
+        "checkpoint_dir": "./checkpoints_new",
         "resume_checkpoint": None,  # Path to checkpoint to resume from
         "inspect_only": False,      # If True, just inspect the model and exit
         "debug_interval": 5,       # Inspect model every N epochs (0 to disable)
+        "use_weight_norm": True,
     }
 
     # wandb.init() will use sweep config if run by wandb agent,
@@ -915,6 +940,7 @@ def inspect_checkpoint(checkpoint_path):
         mlr_init=config.get('mlr_init', 'mlr'),
         normalisation_mode=config.get('normalisation_mode', config.get('bn_mode', 'normal')),
         mlr_type=config.get('mlr_type', config.get('classifier_type', 'lorentz_mlr')),
+        use_weight_norm=config.get('use_weight_norm', False),
     ).to(device)
 
     # Load weights

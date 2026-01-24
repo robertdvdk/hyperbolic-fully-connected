@@ -17,6 +17,7 @@ class EuclideanToLorentzConv(nn.Module):
         clamp_scale: bool = False,
         normalize_variance: bool = True,
         init_method: str = "lorentz_kaiming",
+        use_weight_norm: bool = False,
     ):
         """
         Args:
@@ -39,6 +40,7 @@ class EuclideanToLorentzConv(nn.Module):
                 manifold=manifold,
                 activation=nn.Identity(),
                 init_method=init_method,
+                use_weight_norm=use_weight_norm,
             ),
             LorentzBatchNorm2d(
                 num_features=out_channels,

@@ -1,5 +1,5 @@
 program: main.py
-method: bayes
+method: grid
 metric:
   name: best_val_acc
   goal: maximize
@@ -7,30 +7,25 @@ metric:
 parameters:
   # Learning rate (log scale)
   learning_rate:
-    distribution: log_uniform_values
-    min: 1e-2
-    max: 2e-1
+    values: [0.01, 0.03, 0.05, 0.1]
 
   # Weight decay (log scale)
   weight_decay:
-    distribution: log_uniform_values
-    min: 5e-5
-    max: 1e-2
+    values: [0.0001, 0.0005, 0.001, 0.005]
 
   scheduler:
     values: ["cosine", "steplr"]
 
-  init_method:
-    values: ["lorentz_kaiming", "xavier"]
-
   normalisation_mode:
-    values: ["normal", "fix_gamma", "clamp_scale", "centering_only"]
+    values: ["fix_gamma", "clamp_scale", "centering_only"]
 
   # Fixed parameters for sweep
   input_proj_type:
     value: "conv_bn_relu"
   mlr_init:
     value: "mlr"
+  init_method:
+    value: "lorentz_kaiming"
   num_epochs:
     value: 200
   momentum:
@@ -67,3 +62,5 @@ parameters:
     value: false
   lr_decay:
     value: 0.2
+  use_weight_norm:
+    value: false

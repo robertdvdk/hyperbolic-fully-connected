@@ -23,6 +23,7 @@ class LorentzResNet(nn.Module):
         mlr_init: str = "mlr",
         normalisation_mode: str = "normal",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         mlr_type: str = "lorentz_mlr",  # "lorentz_mlr" or "fc_mlr"
+        use_weight_norm: bool = False,
     ):
         """
         Args:
@@ -42,6 +43,7 @@ class LorentzResNet(nn.Module):
         self.base_dim = base_dim
         self.init_method = init_method
         self.normalisation_mode = normalisation_mode
+        self.use_weight_norm = use_weight_norm
 
         # Determine BatchNorm settings based on mode
         self.fix_gamma = (normalisation_mode in {"fix_gamma", "centering_only"})
@@ -59,6 +61,7 @@ class LorentzResNet(nn.Module):
             clamp_scale=self.clamp_scale,
             normalize_variance=self.normalize_variance,
             init_method=self.init_method,
+            use_weight_norm=self.use_weight_norm,
         )
 
         # ResNet stages
@@ -67,18 +70,21 @@ class LorentzResNet(nn.Module):
             base_dim + 1,
             layers[0],
             stride=1,
+            use_weight_norm=self.use_weight_norm,
         )
         self.stage2 = self._make_stage(
             base_dim + 1,
             base_dim * 2 + 1,
             layers[1],
             stride=2,
+            use_weight_norm=self.use_weight_norm,
         )
         self.stage3 = self._make_stage(
             base_dim * 2 + 1,
             base_dim * 4 + 1,
             layers[2],
             stride=2,
+            use_weight_norm=self.use_weight_norm,
         )
         self.stage4 = self._make_stage(
             base_dim * 4 + 1,
@@ -86,6 +92,7 @@ class LorentzResNet(nn.Module):
             layers[3],
             stride=2,
             is_final_stage=True,  # Might skip bn2 in last block
+            use_weight_norm=self.use_weight_norm,
         )
 
         # Classifier
@@ -114,6 +121,7 @@ class LorentzResNet(nn.Module):
         num_blocks: int,
         stride: int,
         is_final_stage: bool = False,
+        use_weight_norm: bool = False,
     ) -> nn.Sequential:
         """Create a stage with multiple residual blocks."""
         blocks = []
@@ -133,6 +141,7 @@ class LorentzResNet(nn.Module):
                 fix_gamma=self.fix_gamma,
                 clamp_scale=self.clamp_scale,
                 normalize_variance=self.normalize_variance,
+                use_weight_norm=use_weight_norm,
             )
         )
 
@@ -152,6 +161,7 @@ class LorentzResNet(nn.Module):
                     fix_gamma=self.fix_gamma,
                     clamp_scale=self.clamp_scale,
                     normalize_variance=self.normalize_variance,
+                    use_weight_norm=use_weight_norm,
                 )
             )
 
