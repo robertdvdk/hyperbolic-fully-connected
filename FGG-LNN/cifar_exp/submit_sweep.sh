@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #SBATCH --job-name=cifar_sweep
 #SBATCH --output=./%x_%j.out
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --partition=normal
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=4
@@ -19,7 +19,7 @@ echo "GPUs available: $(nvidia-smi -L)"
 
 # Launch 4 agents, one per GPU
 for i in 0 1 2 3; do
-    CUDA_VISIBLE_DEVICES=$i uv run wandb agent "robert-vdklis/hyperbolic-fully-connected-FGG-LNN_cifar_exp/z5go1l1h" &
+    CUDA_VISIBLE_DEVICES=$i uv run wandb agent "robert-vdklis/hyperbolic-fully-connected-FGG-LNN_cifar_exp/mk677cis" &
     echo "Started agent $i on GPU $i (PID: $!)"
 done
 
