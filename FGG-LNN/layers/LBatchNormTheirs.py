@@ -6,10 +6,19 @@ from geoopt import ManifoldParameter
 class LorentzBatchNorm(nn.Module):
     """ Lorentz Batch Normalization with Centroid and Fréchet variance
     """
-    def __init__(self, manifold: Lorentz, num_features: int, fix_gamma: bool = False):
+    def __init__(
+        self,
+        manifold: Lorentz,
+        num_features: int,
+        fix_gamma: bool = False,
+        clamp_scale: bool = False,
+        normalize_variance: bool = True,
+    ):
         super(LorentzBatchNorm, self).__init__()
         self.manifold = manifold
         self.fix_gamma = fix_gamma
+        self.clamp_scale = clamp_scale
+        self.normalize_variance = normalize_variance
 
         self.beta = ManifoldParameter(self.manifold.origin(num_features), manifold=self.manifold)
         if fix_gamma:
@@ -37,14 +46,22 @@ class LorentzBatchNorm(nn.Module):
             x_T = self.manifold.logmap(mean, x)
             x_T = self.manifold.transp0back(mean, x_T)
 
-            # Compute Fréchet variance
-            if len(x.shape) == 3:
-                var = torch.mean(torch.norm(x_T, dim=-1), dim=(0,1))
+            # Compute Fréchet variance (optional)
+            if self.normalize_variance:
+                if len(x.shape) == 3:
+                    var = torch.mean(torch.norm(x_T, dim=-1), dim=(0,1))
+                else:
+                    var = torch.mean(torch.norm(x_T, dim=-1), dim=0)
+
+                div_factor = var + self.eps
             else:
-                var = torch.mean(torch.norm(x_T, dim=-1), dim=0)
+                div_factor = 1.0
 
             # Rescale batch
-            x_T = x_T*(self.gamma/(var+self.eps))
+            scale = self.gamma / div_factor
+            if self.clamp_scale and self.normalize_variance:
+                scale = torch.clamp(scale, min=0.5, max=2.0)
+            x_T = x_T * scale
 
             # Transport batch to learned mean
             x_T = self.manifold.transp0(beta, x_T)
@@ -62,7 +79,8 @@ class LorentzBatchNorm(nn.Module):
                         )
                     )
                 )
-                self.running_var.copy_((1 - momentum)*self.running_var + momentum*var.detach())
+                if self.normalize_variance:
+                    self.running_var.copy_((1 - momentum)*self.running_var + momentum*var.detach())
 
         else:
             # Transport batch to origin (center batch)
@@ -71,7 +89,14 @@ class LorentzBatchNorm(nn.Module):
             x_T = self.manifold.transp0back(running_mean, x_T)
 
             # Rescale batch
-            x_T = x_T*(self.gamma/(self.running_var+self.eps))
+            if self.normalize_variance:
+                div_factor = self.running_var + self.eps
+            else:
+                div_factor = 1.0
+            scale = self.gamma / div_factor
+            if self.clamp_scale and self.normalize_variance:
+                scale = torch.clamp(scale, min=0.5, max=2.0)
+            x_T = x_T * scale
 
             # Transport batch to learned mean
             x_T = self.manifold.transp0(beta, x_T)
@@ -84,8 +109,21 @@ class LorentzBatchNorm(nn.Module):
 class LorentzBatchNorm1d(LorentzBatchNorm):
     """ 1D Lorentz Batch Normalization with Centroid and Fréchet variance
     """
-    def __init__(self, manifold: Lorentz, num_features: int, fix_gamma: bool = False):
-        super(LorentzBatchNorm1d, self).__init__(manifold, num_features, fix_gamma=fix_gamma)
+    def __init__(
+        self,
+        manifold: Lorentz,
+        num_features: int,
+        fix_gamma: bool = False,
+        clamp_scale: bool = False,
+        normalize_variance: bool = True,
+    ):
+        super(LorentzBatchNorm1d, self).__init__(
+            manifold,
+            num_features,
+            fix_gamma=fix_gamma,
+            clamp_scale=clamp_scale,
+            normalize_variance=normalize_variance,
+        )
 
     def forward(self, x, momentum=0.1):
         return super(LorentzBatchNorm1d, self).forward(x, momentum)
@@ -93,8 +131,21 @@ class LorentzBatchNorm1d(LorentzBatchNorm):
 class LorentzBatchNorm2d(LorentzBatchNorm):
     """ 2D Lorentz Batch Normalization with Centroid and Fréchet variance
     """
-    def __init__(self, manifold: Lorentz, num_features: int, fix_gamma: bool = False):
-        super(LorentzBatchNorm2d, self).__init__(manifold, num_features, fix_gamma=fix_gamma)
+    def __init__(
+        self,
+        manifold: Lorentz,
+        num_features: int,
+        fix_gamma: bool = False,
+        clamp_scale: bool = False,
+        normalize_variance: bool = True,
+    ):
+        super(LorentzBatchNorm2d, self).__init__(
+            manifold,
+            num_features,
+            fix_gamma=fix_gamma,
+            clamp_scale=clamp_scale,
+            normalize_variance=normalize_variance,
+        )
 
     def forward(self, x, momentum=0.1):
         """ x has to be in channel last representation -> Shape = bs x H x W x C """

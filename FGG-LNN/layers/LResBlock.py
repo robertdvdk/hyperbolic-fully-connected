@@ -17,6 +17,8 @@ class LorentzResBlock(nn.Module):
         init_method: str = "kaiming",
         skip_bn2: bool = False,  # Skip bn2 for last block (prevents gamma explosion with MLR)
         fix_gamma: bool = False,  # Fix gamma=1 in all BatchNorms (forces linear layers to handle scaling)
+        clamp_scale: bool = False,  # Clamp BN scale to [0.5, 2.0]
+        normalize_variance: bool = True,  # If False, mean-only normalization (no variance scaling)
     ):
 
         super().__init__()
@@ -28,20 +30,38 @@ class LorentzResBlock(nn.Module):
             kernel_size=kernel_size, stride=1, padding=padding,
             manifold=manifold, activation=nn.Identity(), init_method=init_method
         )
-        self.bn1 = LorentzBatchNorm2d(num_features=output_dim, manifold=manifold, fix_gamma=fix_gamma)
+        self.bn1 = LorentzBatchNorm2d(
+            num_features=output_dim,
+            manifold=manifold,
+            fix_gamma=fix_gamma,
+            clamp_scale=clamp_scale,
+            normalize_variance=normalize_variance,
+        )
         self.layer2 = LorentzConv2d(
             in_channels=output_dim, out_channels=output_dim,
             kernel_size=kernel_size, stride=stride, padding=padding,
             manifold=manifold, activation=nn.Identity(), init_method=init_method
         )
-        self.bn2 = None if skip_bn2 else LorentzBatchNorm2d(num_features=output_dim, manifold=manifold, fix_gamma=fix_gamma)
+        self.bn2 = None if skip_bn2 else LorentzBatchNorm2d(
+            num_features=output_dim,
+            manifold=manifold,
+            fix_gamma=fix_gamma,
+            clamp_scale=clamp_scale,
+            normalize_variance=normalize_variance,
+        )
         if input_dim != output_dim:
             proj_layers = [LorentzConv2d(
                 in_channels=input_dim, out_channels=output_dim,
                 kernel_size=1, stride=stride, padding=0,
                 manifold=manifold, activation=nn.Identity(), init_method=init_method
             )]
-            proj_layers.append(LorentzBatchNorm2d(num_features=output_dim, manifold=manifold, fix_gamma=fix_gamma))
+            proj_layers.append(LorentzBatchNorm2d(
+                num_features=output_dim,
+                manifold=manifold,
+                fix_gamma=fix_gamma,
+                clamp_scale=clamp_scale,
+                normalize_variance=normalize_variance,
+            ))
             self.proj = nn.Sequential(*proj_layers)
         else:
             self.proj = nn.Identity()

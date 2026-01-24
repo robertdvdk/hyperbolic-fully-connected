@@ -21,24 +21,28 @@ class LorentzResNet(nn.Module):
         init_method: str = "kaiming",
         input_proj_type: str = "conv_bn_relu",
         mlr_init: str = "mlr",
-        bn_mode: str = "normal",  # "normal", "fix_gamma", or "skip_final_bn2"
+        normalisation_mode: str = "normal",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
     ):
         """
         Args:
-            bn_mode: Controls BatchNorm behavior to prevent gamma explosion with MLR.
+            normalisation_mode: Controls normalization behavior to prevent gamma explosion with MLR.
                 - "normal": Default behavior (learnable gamma in all BatchNorms)
                 - "fix_gamma": Fix gamma=1 everywhere (forces linear layers to handle scaling)
                 - "skip_final_bn2": Skip bn2 in the last ResBlock before classifier
+                - "clamp_scale": Clamp BN scale to [0.5, 2.0] without fixing gamma
+                - "mean_only": Mean-only normalization (no variance scaling)
         """
         super().__init__()
         self.manifold = manifold or Lorentz(k_value=1.0)
         self.base_dim = base_dim
         self.init_method = init_method
-        self.bn_mode = bn_mode
+        self.normalisation_mode = normalisation_mode
 
         # Determine BatchNorm settings based on mode
-        self.fix_gamma = (bn_mode == "fix_gamma")
-        self.skip_final_bn2 = (bn_mode == "skip_final_bn2")
+        self.fix_gamma = (normalisation_mode == "fix_gamma")
+        self.skip_final_bn2 = (normalisation_mode == "skip_final_bn2")
+        self.clamp_scale = (normalisation_mode == "clamp_scale")
+        self.normalize_variance = (normalisation_mode != "mean_only")
 
         # Initial projection: 3 -> 64
         self.input_proj = EuclideanToLorentzConv(
@@ -47,6 +51,8 @@ class LorentzResNet(nn.Module):
             self.manifold,
             proj_type=input_proj_type,
             fix_gamma=self.fix_gamma,
+            clamp_scale=self.clamp_scale,
+            normalize_variance=self.normalize_variance,
         )
 
         # ResNet stages
@@ -116,6 +122,8 @@ class LorentzResNet(nn.Module):
                 init_method=self.init_method,
                 skip_bn2=(is_last_block and self.skip_final_bn2),
                 fix_gamma=self.fix_gamma,
+                clamp_scale=self.clamp_scale,
+                normalize_variance=self.normalize_variance,
             )
         )
 
@@ -133,6 +141,8 @@ class LorentzResNet(nn.Module):
                     init_method=self.init_method,
                     skip_bn2=(is_last_block and self.skip_final_bn2),
                     fix_gamma=self.fix_gamma,
+                    clamp_scale=self.clamp_scale,
+                    normalize_variance=self.normalize_variance,
                 )
             )
 

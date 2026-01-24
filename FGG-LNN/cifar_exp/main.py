@@ -85,7 +85,7 @@ def select_optimizer(model, lr, weight_decay, warmup_epochs):
                                 end_factor=1.0,
                                 total_iters=warmup_epochs)
     step_scheduler = MultiStepLR(
-        optimizer, milestones=[m - warmup_epochs for m in [10, 20, 30]], gamma=0.2
+        optimizer, milestones=[m - warmup_epochs for m in [60, 120, 160]], gamma=0.2
     )
     lr_scheduler = SequentialLR(optimizer,
                                 schedulers=[warmup_scheduler, step_scheduler],
@@ -593,6 +593,7 @@ def train(config=None):
 
     # Model
     manifold = Lorentz(k_value=get_config('curvature', 1.0))
+    normalisation_mode = get_config('normalisation_mode', get_config('bn_mode', 'normal'))
     model = lorentz_resnet18(
         num_classes=100,
         base_dim=get_config('hidden_dim', 64),
@@ -600,7 +601,7 @@ def train(config=None):
         init_method=get_config('init_method', 'lorentz_kaiming'),
         input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
         mlr_init=get_config('mlr_init', 'mlr'),
-        bn_mode=get_config('bn_mode', 'normal'),  # "normal", "fix_gamma", or "skip_final_bn2"
+        normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
     ).to(device)
 
     # Log model size
@@ -826,12 +827,12 @@ def main():
         "init_method": "lorentz_kaiming",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
-        "bn_mode": "normal",  # "normal", "fix_gamma", or "skip_final_bn2"
+        "normalisation_mode": "fix_gamma",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
 
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 1e-3,
+        "weight_decay": 5e-4,
         "momentum": 0.9,
         "batch_size": 128,
         "num_epochs": 200,
@@ -860,7 +861,7 @@ def main():
         "checkpoint_dir": "./checkpoints",
         "resume_checkpoint": None,  # Path to checkpoint to resume from
         "inspect_only": False,      # If True, just inspect the model and exit
-        "debug_interval": 0,       # Inspect model every N epochs (0 to disable)
+        "debug_interval": 1,       # Inspect model every N epochs (0 to disable)
     }
 
     # wandb.init() will use sweep config if run by wandb agent,
@@ -868,6 +869,7 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
+        name="fix_gamma"
     )
 
     train(wandb.config)
@@ -899,7 +901,7 @@ def inspect_checkpoint(checkpoint_path):
         init_method=config.get('init_method', 'lorentz_kaiming'),
         input_proj_type=config.get('input_proj_type', 'conv_bn_relu'),
         mlr_init=config.get('mlr_init', 'mlr'),
-        bn_mode=config.get('bn_mode', 'normal'),
+        normalisation_mode=config.get('normalisation_mode', config.get('bn_mode', 'normal')),
     ).to(device)
 
     # Load weights
