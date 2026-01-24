@@ -21,11 +21,24 @@ class LorentzResNet(nn.Module):
         init_method: str = "kaiming",
         input_proj_type: str = "conv_bn_relu",
         mlr_init: str = "mlr",
+        bn_mode: str = "normal",  # "normal", "fix_gamma", or "skip_final_bn2"
     ):
+        """
+        Args:
+            bn_mode: Controls BatchNorm behavior to prevent gamma explosion with MLR.
+                - "normal": Default behavior (learnable gamma in all BatchNorms)
+                - "fix_gamma": Fix gamma=1 everywhere (forces linear layers to handle scaling)
+                - "skip_final_bn2": Skip bn2 in the last ResBlock before classifier
+        """
         super().__init__()
-        self.manifold = manifold or Lorentz(k=1.0)
+        self.manifold = manifold or Lorentz(k_value=1.0)
         self.base_dim = base_dim
         self.init_method = init_method
+        self.bn_mode = bn_mode
+
+        # Determine BatchNorm settings based on mode
+        self.fix_gamma = (bn_mode == "fix_gamma")
+        self.skip_final_bn2 = (bn_mode == "skip_final_bn2")
 
         # Initial projection: 3 -> 64
         self.input_proj = EuclideanToLorentzConv(
@@ -33,6 +46,7 @@ class LorentzResNet(nn.Module):
             base_dim + 1,
             self.manifold,
             proj_type=input_proj_type,
+            fix_gamma=self.fix_gamma,
         )
 
         # ResNet stages
@@ -59,6 +73,7 @@ class LorentzResNet(nn.Module):
             base_dim * 8 + 1,
             layers[3],
             stride=2,
+            is_final_stage=True,  # Might skip bn2 in last block
         )
 
         # Classifier
@@ -74,7 +89,7 @@ class LorentzResNet(nn.Module):
         self.classifier = LorentzMLR(
             manifold = self.manifold,
             num_features = base_dim * 8 + 1,
-            num_classes = num_classes + 1,
+            num_classes = num_classes,
         )
     
     def _make_stage(
@@ -83,11 +98,13 @@ class LorentzResNet(nn.Module):
         out_dim: int,
         num_blocks: int,
         stride: int,
+        is_final_stage: bool = False,
     ) -> nn.Sequential:
         """Create a stage with multiple residual blocks."""
         blocks = []
 
         # First block handles dimension change and downsampling
+        is_last_block = (num_blocks == 1 and is_final_stage)
         blocks.append(
             LorentzResBlock(
                 input_dim=in_dim,
@@ -97,11 +114,14 @@ class LorentzResNet(nn.Module):
                 padding=1,
                 manifold=self.manifold,
                 init_method=self.init_method,
+                skip_bn2=(is_last_block and self.skip_final_bn2),
+                fix_gamma=self.fix_gamma,
             )
         )
 
         # Remaining blocks maintain dimensions
-        for _ in range(1, num_blocks):
+        for i in range(1, num_blocks):
+            is_last_block = (i == num_blocks - 1) and is_final_stage
             blocks.append(
                 LorentzResBlock(
                     input_dim=out_dim,
@@ -111,6 +131,8 @@ class LorentzResNet(nn.Module):
                     padding=1,
                     manifold=self.manifold,
                     init_method=self.init_method,
+                    skip_bn2=(is_last_block and self.skip_final_bn2),
+                    fix_gamma=self.fix_gamma,
                 )
             )
 

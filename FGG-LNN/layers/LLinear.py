@@ -40,13 +40,26 @@ class LorentzFullyConnected(nn.Module):
             else:
                 with torch.no_grad():
                     self.U.data.copy_(0.5 * torch.eye(in_features, out_features))
+
+        elif reset_params == "xavier":
+            std = (1.0 / (in_features + out_features)) ** 0.5
+            with torch.no_grad():
+                self.U.data.normal_(0, std)
+            self.a.data.fill_(a_default)
             
         elif reset_params == "lorentz_kaiming":
-            # For Lorentz models: divide std by 0.5 to account for time coordinate
             std = (1.0 / in_features) ** 0.5
             with torch.no_grad():
                 self.U.data.normal_(0, std)
             self.a.data.fill_(a_default)
+
+        elif reset_params == "kaiming":
+            # For Lorentz models: divide std by 0.5 to account for time coordinate
+            std = (2.0 / in_features) ** 0.5
+            with torch.no_grad():
+                self.U.data.normal_(0, std)
+            self.a.data.fill_(a_default)
+
 
         elif reset_params == "mlr":
             std = (5.0 / in_features) ** 0.5
@@ -121,8 +134,8 @@ class LorentzMLR(nn.Module):
 
         self.manifold = manifold
 
-        self.a = torch.nn.Parameter(torch.zeros(num_classes,))
-        self.z = torch.nn.Parameter(F.pad(torch.zeros(num_classes, num_features-2), pad=(1,0), value=1)) # z should not be (0,0)
+        self.a = torch.nn.Parameter(torch.zeros(num_classes + 1,))
+        self.z = torch.nn.Parameter(F.pad(torch.zeros(num_classes + 1, num_features-2), pad=(1,0), value=1)) # z should not be (0,0)
 
         self.init_weights()
 

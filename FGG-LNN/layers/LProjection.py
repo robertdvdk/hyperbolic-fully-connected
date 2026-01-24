@@ -1,34 +1,24 @@
 import torch
 import torch.nn as nn
 from .LConv import LorentzConv2d
-from .LBatchNorm import LorentzBatchNorm2d
+from .LBatchNormTheirs import LorentzBatchNorm2d
 from .lorentz import Lorentz
 
 class EuclideanToLorentzConv(nn.Module):
     """Project Euclidean image onto Lorentz manifold via 1x1 conv."""
-    
-    def __init__(self, in_channels, out_channels, manifold: Lorentz, proj_type: str = "conv_bn_relu"):
+
+    def __init__(self, in_channels, out_channels, manifold: Lorentz, proj_type: str = "conv_bn_relu", fix_gamma: bool = False):
         """
         Args:
             in_channels: Euclidean channels (e.g., 3 for RGB)
             out_channels: Lorentz channels INCLUDING time (e.g., 16 means 15 space + 1 time)
+            fix_gamma: If True, fix gamma=1 in BatchNorm (not learnable)
         """
         super().__init__()
         self.manifold = manifold
-        # if proj_type == "conv":
-        #     self.proj = nn.Conv2d(in_channels, out_channels - 1, kernel_size=3)
-        # elif proj_type == "conv_bn_relu":
-        #     self.proj = nn.Sequential(
-        #         nn.Conv2d(in_channels, out_channels - 1, kernel_size=3),
-        #         nn.BatchNorm2d(out_channels - 1),
-        #         nn.ReLU()
-        #     )
-        # else:
-        #     raise ValueError(f"Unknown proj_type: {proj_type}")
         self.proj = nn.Sequential(
             LorentzConv2d(in_channels=in_channels + 1, out_channels=out_channels, kernel_size=3, padding=1, stride=1, manifold=manifold, activation=nn.Identity(), init_method="lorentz_kaiming"),
-            LorentzBatchNorm2d(num_features=out_channels, manifold=manifold),
-
+            LorentzBatchNorm2d(num_features=out_channels, manifold=manifold, fix_gamma=fix_gamma),
         )
     
     def forward(self, x):

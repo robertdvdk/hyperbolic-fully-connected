@@ -12,19 +12,19 @@ class Lorentz(nn.Module):
         -x_0^2 + x_1^2 + ... + x_n^2 = -1/k"""
 
     def __init__(
-        self, k: float = 0.1, requires_grad=False, constraining_strategy=nn.Identity()
+        self, k_value: float = 1.0, requires_grad=False, constraining_strategy=nn.Identity()
     ):
         super().__init__()
         # Store curvature as a buffer to avoid creating new tensors during forward.
-        self.register_buffer("_k", torch.tensor(float(k), dtype=torch.float32))
+        self._k = torch.nn.Parameter(torch.tensor(k_value), requires_grad=requires_grad)
+        # self.register_buffer("_k", torch.tensor(float(k), dtype=torch.float32))
         # k_value = torch.log(torch.exp(torch.tensor(k)) - 1)
         # self.c_softplus_inv = nn.Parameter(k_value, requires_grad=requires_grad)
         # self.constraining_strategy = constraining_strategy
 
     def k(self):
-        """Returns the negative curvature of the Lorentz model."""
         return self._k
-
+    
     def forward(self, x):
         return self.expmap0(x)
 

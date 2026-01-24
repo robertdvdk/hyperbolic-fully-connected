@@ -6,12 +6,17 @@ from geoopt import ManifoldParameter
 class LorentzBatchNorm(nn.Module):
     """ Lorentz Batch Normalization with Centroid and Fréchet variance
     """
-    def __init__(self, manifold: Lorentz, num_features: int):
+    def __init__(self, manifold: Lorentz, num_features: int, fix_gamma: bool = False):
         super(LorentzBatchNorm, self).__init__()
         self.manifold = manifold
+        self.fix_gamma = fix_gamma
 
         self.beta = ManifoldParameter(self.manifold.origin(num_features), manifold=self.manifold)
-        self.gamma = torch.nn.Parameter(torch.ones((1,)))
+        if fix_gamma:
+            # Fixed gamma=1, not learnable (forces linear layers to handle scaling)
+            self.register_buffer('gamma', torch.ones((1,)))
+        else:
+            self.gamma = torch.nn.Parameter(torch.ones((1,)))
         self.eps = 1e-5
 
         # running statistics
@@ -20,7 +25,6 @@ class LorentzBatchNorm(nn.Module):
 
     def forward(self, x, momentum=0.1):
         assert (len(x.shape)==2) or (len(x.shape)==3), "Wrong input shape in Lorentz batch normalization."
-
         beta = self.beta
 
         if self.training:
@@ -80,8 +84,8 @@ class LorentzBatchNorm(nn.Module):
 class LorentzBatchNorm1d(LorentzBatchNorm):
     """ 1D Lorentz Batch Normalization with Centroid and Fréchet variance
     """
-    def __init__(self, manifold: Lorentz, num_features: int):
-        super(LorentzBatchNorm1d, self).__init__(manifold, num_features)
+    def __init__(self, manifold: Lorentz, num_features: int, fix_gamma: bool = False):
+        super(LorentzBatchNorm1d, self).__init__(manifold, num_features, fix_gamma=fix_gamma)
 
     def forward(self, x, momentum=0.1):
         return super(LorentzBatchNorm1d, self).forward(x, momentum)
@@ -89,8 +93,8 @@ class LorentzBatchNorm1d(LorentzBatchNorm):
 class LorentzBatchNorm2d(LorentzBatchNorm):
     """ 2D Lorentz Batch Normalization with Centroid and Fréchet variance
     """
-    def __init__(self, manifold: Lorentz, num_features: int):
-        super(LorentzBatchNorm2d, self).__init__(manifold, num_features)
+    def __init__(self, manifold: Lorentz, num_features: int, fix_gamma: bool = False):
+        super(LorentzBatchNorm2d, self).__init__(manifold, num_features, fix_gamma=fix_gamma)
 
     def forward(self, x, momentum=0.1):
         """ x has to be in channel last representation -> Shape = bs x H x W x C """

@@ -20,41 +20,49 @@ sys.path.insert(0, str(parent_dir.parent))
 from layers import lorentz_resnet18, Lorentz
 
 
-def get_param_groups(model, lr_manifold, weight_decay_manifold):
+def get_param_groups(model, lr_manifold, weight_decay_manifold, verbose=False):
     no_decay = ["scale"]
     k_params = ["manifold.k"]
 
+    # Group 0: standard params with weight decay
+    group0_params = []
+    group0_names = []
+    # Group 1: ManifoldParameters
+    group1_params = []
+    group1_names = []
+    # Group 2: k parameters (no weight decay)
+    group2_params = []
+    group2_names = []
+
+    for n, p in model.named_parameters():
+        if not p.requires_grad:
+            continue
+        if any(nd in n for nd in k_params):
+            group2_params.append(p)
+            group2_names.append(n)
+        elif isinstance(p, ManifoldParameter):
+            group1_params.append(p)
+            group1_names.append(n)
+        elif not any(nd in n for nd in no_decay):
+            group0_params.append(p)
+            group0_names.append(n)
+        else:
+            # This would be params matching no_decay but not other conditions
+            if verbose:
+                print(f"  WARNING: param {n} excluded from all groups (no weight decay)")
+
+    if verbose:
+        print(f"\n--- Parameter Groups ---")
+        print(f"Group 0 (standard, with WD): {len(group0_params)} params")
+        gamma_params = [n for n in group0_names if 'gamma' in n]
+        print(f"  gamma params in group 0: {gamma_params}")
+        print(f"Group 1 (ManifoldParam, reduced LR): {len(group1_params)} params")
+        print(f"Group 2 (k params, no WD): {len(group2_params)} params")
+
     parameters = [
-        {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if p.requires_grad
-                and not any(nd in n for nd in no_decay)
-                and not isinstance(p, ManifoldParameter)
-                and not any(nd in n for nd in k_params)
-            ],
-        },
-        {
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if p.requires_grad
-                and isinstance(p, ManifoldParameter)
-            ],
-            'lr' : lr_manifold,
-            "weight_decay": weight_decay_manifold
-        },
-        {  # k parameters
-            "params": [
-                p
-                for n, p in model.named_parameters()
-                if p.requires_grad
-                and any(nd in n for nd in k_params)
-            ], 
-            "weight_decay": 0,
-            "lr": 1e-4
-        }
+        {"params": group0_params},
+        {"params": group1_params, 'lr': lr_manifold, "weight_decay": weight_decay_manifold},
+        {"params": group2_params, "weight_decay": 0, "lr": 1e-4}
     ]
 
     return parameters
@@ -62,15 +70,22 @@ def get_param_groups(model, lr_manifold, weight_decay_manifold):
 def select_optimizer(model, lr, weight_decay, warmup_epochs):
     """ Selects and sets up an available optimizer and returns it. """
 
-    model_parameters = get_param_groups(model, lr*0.2, weight_decay)
+    model_parameters = get_param_groups(model, lr*0.2, weight_decay, verbose=True)
     optimizer = RiemannianSGD(model_parameters, lr=lr, weight_decay=weight_decay, momentum=0.9, nesterov=True, stabilize=1)
+
+    # Verify weight decay is being applied to gamma
+    print(f"\n--- Optimizer weight decay verification ---")
+    print(f"Optimizer-level weight_decay: {weight_decay}")
+    for i, group in enumerate(optimizer.param_groups):
+        wd = group.get('weight_decay', 'NOT SET')
+        print(f"Group {i}: weight_decay={wd}, num_params={len(group['params'])}")
     from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
     warmup_scheduler = LinearLR(optimizer,
                                 start_factor=0.01,
                                 end_factor=1.0,
                                 total_iters=warmup_epochs)
     step_scheduler = MultiStepLR(
-        optimizer, milestones=[m - warmup_epochs for m in [60, 120, 160]], gamma=0.2
+        optimizer, milestones=[m - warmup_epochs for m in [10, 20, 30]], gamma=0.2
     )
     lr_scheduler = SequentialLR(optimizer,
                                 schedulers=[warmup_scheduler, step_scheduler],
@@ -206,6 +221,28 @@ def inspect_model(model, dataloader, device='cuda'):
             print(f"  z norm: min={module.z.norm(dim=-1).min().item():.6f}, max={module.z.norm(dim=-1).max().item():.6f}")
             print(f"  a: min={module.a.min().item():.6f}, max={module.a.max().item():.6f}")
 
+    # Check BatchNorm parameters - especially stage4.1.bn2
+    print("\n--- BatchNorm parameters (gamma/beta for all BN layers) ---")
+    for name, module in model.named_modules():
+        if 'bn' in name.lower() or 'batchnorm' in name.lower() or 'BatchNorm' in type(module).__name__:
+            print(f"{name} ({type(module).__name__}):")
+            # LorentzBatchNorm uses gamma/beta, standard BN uses weight/bias
+            if hasattr(module, 'gamma') and module.gamma is not None:
+                print(f"  gamma: {module.gamma.item():.6f}")
+            if hasattr(module, 'weight') and module.weight is not None:
+                print(f"  gamma (weight): min={module.weight.min().item():.6f}, max={module.weight.max().item():.6f}")
+            if hasattr(module, 'beta') and module.beta is not None:
+                beta = module.beta
+                print(f"  beta: time={beta[0].item():.4f}, space_norm={beta[1:].norm().item():.4f}")
+            if hasattr(module, 'bias') and module.bias is not None:
+                print(f"  beta (bias): min={module.bias.min().item():.6f}, max={module.bias.max().item():.6f}")
+            if hasattr(module, 'running_mean') and module.running_mean is not None:
+                rm = module.running_mean
+                print(f"  running_mean: norm={rm.norm().item():.6f}")
+            if hasattr(module, 'running_var') and module.running_var is not None:
+                rv = module.running_var
+                print(f"  running_var: {rv.item():.6f}")
+
     # Forward pass to check activations
     print("\n--- Forward pass inspection ---")
     with torch.no_grad():
@@ -229,7 +266,117 @@ def inspect_model(model, dataloader, device='cuda'):
         print(f"After stage3: time=[{x3[:,0].min().item():.2f}, {x3[:,0].max().item():.2f}], "
               f"space_norm={x3[:,1:].norm(dim=1).mean().item():.2f}")
 
-        x4 = model.stage4(x3)
+        # Detailed stage4 inspection - find where explosion happens
+        print("\n  --- Detailed Stage4 inspection ---")
+        x_stage = x3
+        for block_idx, block in enumerate(model.stage4):
+            print(f"  Stage4.{block_idx} input: time=[{x_stage[:,0].min().item():.2f}, {x_stage[:,0].max().item():.2f}], "
+                  f"space_norm={x_stage[:,1:].norm(dim=1).mean().item():.2f}")
+
+            # Through layer1
+            x_l1 = block.layer1(x_stage)
+            print(f"    after layer1: time=[{x_l1[:,0].min().item():.2f}, {x_l1[:,0].max().item():.2f}], "
+                  f"space_norm={x_l1[:,1:].norm(dim=1).mean().item():.2f}")
+
+            # Through bn1
+            x_bn1 = block.bn1(x_l1)
+            print(f"    after bn1: time=[{x_bn1[:,0].min().item():.2f}, {x_bn1[:,0].max().item():.2f}], "
+                  f"space_norm={x_bn1[:,1:].norm(dim=1).mean().item():.2f}")
+
+            # Through relu
+            x_relu1 = block.manifold.relu(x_bn1, manifold_dim=1)
+            print(f"    after relu1: time=[{x_relu1[:,0].min().item():.2f}, {x_relu1[:,0].max().item():.2f}], "
+                  f"space_norm={x_relu1[:,1:].norm(dim=1).mean().item():.2f}")
+
+            # Through layer2
+            x_l2 = block.layer2(x_relu1)
+            print(f"    after layer2: time=[{x_l2[:,0].min().item():.2f}, {x_l2[:,0].max().item():.2f}], "
+                  f"space_norm={x_l2[:,1:].norm(dim=1).mean().item():.2f}")
+
+            # Through bn2 - with detailed internal tracing (if bn2 exists)
+            if block.bn2 is not None:
+                x_bn2 = block.bn2(x_l2)
+                print(f"    after bn2: time=[{x_bn2[:,0].min().item():.2f}, {x_bn2[:,0].max().item():.2f}], "
+                      f"space_norm={x_bn2[:,1:].norm(dim=1).mean().item():.2f}")
+
+                # Detailed bn2 tracing if there's explosion
+                if x_bn2[:,0].max().item() > 1e6 or torch.isnan(x_bn2).any():
+                    print(f"\n    !!! EXPLOSION in bn2 - detailed trace !!!")
+                    bn = block.bn2
+                    m = bn.manifold
+
+                    # Reshape like bn2 does
+                    bs, c, h, w = x_l2.shape
+                    x_flat = x_l2.permute(0, 2, 3, 1).reshape(bs, -1, c)
+
+                    # Get running mean on manifold
+                    running_mean = m.expmap0(bn.running_mean)
+                    print(f"      running_mean: time={running_mean[0].item():.4f}, space_norm={running_mean[1:].norm().item():.4f}")
+
+                    # Logmap: map input to tangent space at running_mean
+                    x_T = m.logmap(running_mean, x_flat)
+                    tangent_norms = x_T.norm(dim=-1)  # [bs, H*W]
+                    print(f"      logmap tangent norms: min={tangent_norms.min().item():.4f}, max={tangent_norms.max().item():.4f}, "
+                          f"mean={tangent_norms.mean().item():.4f}, num>10={((tangent_norms > 10).sum().item())}")
+
+                    # Transp0back: transport to origin
+                    x_T = m.transp0back(running_mean, x_T)
+                    tangent_norms_after = x_T.norm(dim=-1)
+                    print(f"      after transp0back: norms min={tangent_norms_after.min().item():.4f}, max={tangent_norms_after.max().item():.4f}")
+
+                    # Scaling
+                    scale_factor = bn.gamma / (bn.running_var + bn.eps)
+                    print(f"      scale factor: {scale_factor.item():.4f} (gamma={bn.gamma.item():.4f}, var={bn.running_var.item():.4f})")
+                    x_T_scaled = x_T * scale_factor
+                    scaled_norms = x_T_scaled.norm(dim=-1)
+                    print(f"      after scaling: norms min={scaled_norms.min().item():.4f}, max={scaled_norms.max().item():.4f}")
+
+                    # Transport to beta
+                    beta = bn.beta
+                    print(f"      beta: time={beta[0].item():.4f}, space_norm={beta[1:].norm().item():.4f}")
+                    x_T_at_beta = m.transp0(beta, x_T_scaled)
+                    beta_norms = x_T_at_beta.norm(dim=-1)
+                    print(f"      after transp0 to beta: norms min={beta_norms.min().item():.4f}, max={beta_norms.max().item():.4f}")
+
+                    # Expmap: this is where explosion happens
+                    output = m.expmap(beta, x_T_at_beta)
+                    print(f"      after expmap: time=[{output[...,0].min().item():.2f}, {output[...,0].max().item():.2f}]")
+
+                    # Find the specific positions that exploded
+                    time_vals = output[..., 0]
+                    max_idx = time_vals.argmax()
+                    batch_idx = max_idx // (h * w)
+                    spatial_idx = max_idx % (h * w)
+                    print(f"      Worst explosion at batch={batch_idx}, spatial={spatial_idx}")
+                    print(f"        input time: {x_flat[batch_idx, spatial_idx, 0].item():.4f}")
+                    print(f"        tangent norm after logmap: {tangent_norms[batch_idx, spatial_idx].item():.4f}")
+                    print(f"        scaled tangent norm: {scaled_norms[batch_idx, spatial_idx].item():.4f}")
+                    print()
+            else:
+                x_bn2 = x_l2  # No bn2, just pass through
+                print(f"    bn2: SKIPPED (skip_bn2=True)")
+
+            # Through proj (shortcut)
+            x_proj = block.proj(x_stage)
+            print(f"    after proj: time=[{x_proj[:,0].min().item():.2f}, {x_proj[:,0].max().item():.2f}], "
+                  f"space_norm={x_proj[:,1:].norm(dim=1).mean().item():.2f}")
+
+            # Residual addition (space only)
+            out_space = x_proj[:, 1:, :, :] + x_bn2[:, 1:, :, :]
+            print(f"    after space add: space_norm={out_space.norm(dim=1).mean().item():.2f}, "
+                  f"space_max={out_space.abs().max().item():.2f}")
+
+            # Projection to get time
+            x_out = block.manifold.projection_space_orthogonal(out_space, manifold_dim=1)
+            print(f"    after proj_orth: time=[{x_out[:,0].min().item():.2f}, {x_out[:,0].max().item():.2f}], "
+                  f"space_norm={x_out[:,1:].norm(dim=1).mean().item():.2f}")
+
+            # Final relu
+            x_stage = block.manifold.relu(x_out, manifold_dim=1)
+            print(f"    after relu2: time=[{x_stage[:,0].min().item():.2f}, {x_stage[:,0].max().item():.2f}], "
+                  f"space_norm={x_stage[:,1:].norm(dim=1).mean().item():.2f}")
+
+        x4 = x_stage
         print(f"After stage4: time=[{x4[:,0].min().item():.2f}, {x4[:,0].max().item():.2f}], "
               f"space_norm={x4[:,1:].norm(dim=1).mean().item():.2f}")
 
@@ -330,10 +477,15 @@ def get_dataloaders(
     return train_loader, val_loader, test_loader
 
 
-def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0):
+def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0, debug_gamma=False):
     """Train for one epoch, return avg loss and accuracy."""
     model.train()
     running_loss, total_correct, total_samples = 0.0, 0, 0
+
+    # For tracking gamma gradients
+    gamma_grad_accum = {}
+    gamma_values = {}
+    batch_count = 0
 
     for x, y in train_loader:
         x, y = x.to(device), y.to(device)
@@ -342,12 +494,33 @@ def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0):
         logits = model(x).squeeze()
         loss = F.cross_entropy(logits, y)
         loss.backward()
+
+        # Track gamma gradients after backward
+        if debug_gamma and batch_count < 10:  # First 10 batches
+            for name, param in model.named_parameters():
+                if 'gamma' in name and param.grad is not None:
+                    if name not in gamma_grad_accum:
+                        gamma_grad_accum[name] = []
+                    gamma_grad_accum[name].append(param.grad.item())
+                    gamma_values[name] = param.item()
+        
+
         # torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
 
         running_loss += loss.item() * x.size(0)
         total_correct += (logits.argmax(dim=1) == y).sum().item()
         total_samples += x.size(0)
+        batch_count += 1
+
+    # Print gamma gradient summary
+    if debug_gamma and gamma_grad_accum:
+        print("\n  --- Gamma gradients (first 10 batches) ---")
+        for name in sorted(gamma_grad_accum.keys()):
+            grads = gamma_grad_accum[name]
+            avg_grad = sum(grads) / len(grads)
+            print(f"  {name}: value={gamma_values[name]:.4f}, avg_grad={avg_grad:.6f}, "
+                  f"all_positive={all(g > 0 for g in grads)}, all_negative={all(g < 0 for g in grads)}")
 
     return running_loss / total_samples, total_correct / total_samples
 
@@ -419,7 +592,7 @@ def train(config=None):
     )
 
     # Model
-    manifold = Lorentz(k=get_config('curvature', 1.0))
+    manifold = Lorentz(k_value=get_config('curvature', 1.0))
     model = lorentz_resnet18(
         num_classes=100,
         base_dim=get_config('hidden_dim', 64),
@@ -427,6 +600,7 @@ def train(config=None):
         init_method=get_config('init_method', 'lorentz_kaiming'),
         input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
         mlr_init=get_config('mlr_init', 'mlr'),
+        bn_mode=get_config('bn_mode', 'normal'),  # "normal", "fix_gamma", or "skip_final_bn2"
     ).to(device)
 
     # Log model size
@@ -554,9 +728,13 @@ def train(config=None):
     for epoch in range(start_epoch, num_epochs):
         start = time.time()
 
+        # Debug gamma gradients at debug intervals
+        should_debug_gamma = debug_interval > 0 and (epoch + 1) % debug_interval == 0
+
         train_loss, train_acc = train_epoch(
             model, train_loader, optimizer, device,
-            grad_clip=get_config('grad_clip', 1.0)
+            grad_clip=get_config('grad_clip', 1.0),
+            debug_gamma=should_debug_gamma
         )
         val_loss, val_acc = evaluate(model, val_loader, device)
 
@@ -648,6 +826,7 @@ def main():
         "init_method": "lorentz_kaiming",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
+        "bn_mode": "normal",  # "normal", "fix_gamma", or "skip_final_bn2"
 
         # Optimization
         "optimizer": "sgd",
@@ -681,7 +860,7 @@ def main():
         "checkpoint_dir": "./checkpoints",
         "resume_checkpoint": None,  # Path to checkpoint to resume from
         "inspect_only": False,      # If True, just inspect the model and exit
-        "debug_interval": 0,        # Inspect model every N epochs (0 to disable)
+        "debug_interval": 0,       # Inspect model every N epochs (0 to disable)
     }
 
     # wandb.init() will use sweep config if run by wandb agent,
@@ -712,7 +891,7 @@ def inspect_checkpoint(checkpoint_path):
     print(f"Config: {config}")
 
     # Create model
-    manifold = Lorentz(k=config.get('curvature', 1.0))
+    manifold = Lorentz(k_value=config.get('curvature', 1.0))
     model = lorentz_resnet18(
         num_classes=100,
         base_dim=config.get('hidden_dim', 64),
@@ -720,6 +899,7 @@ def inspect_checkpoint(checkpoint_path):
         init_method=config.get('init_method', 'lorentz_kaiming'),
         input_proj_type=config.get('input_proj_type', 'conv_bn_relu'),
         mlr_init=config.get('mlr_init', 'mlr'),
+        bn_mode=config.get('bn_mode', 'normal'),
     ).to(device)
 
     # Load weights
