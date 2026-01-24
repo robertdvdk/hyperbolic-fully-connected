@@ -8,26 +8,23 @@ parameters:
   # Learning rate (log scale)
   learning_rate:
     distribution: log_uniform_values
-    min: 1e-3
+    min: 1e-2
     max: 2e-1
 
   # Weight decay (log scale)
   weight_decay:
     distribution: log_uniform_values
-    min: 1e-5
-    max: 5e-3
+    min: 5e-5
+    max: 1e-2
 
   scheduler:
     values: ["cosine", "steplr"]
 
   init_method:
-    values: ["lorentz_kaiming", "xavier", "kaiming", "eye"]
+    values: ["lorentz_kaiming", "xavier"]
 
   normalisation_mode:
-    values: ["normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", "centering_only"]
-
-  mlr_type:
-    values: ["lorentz_mlr", "fc_mlr"]
+    values: ["normal", "fix_gamma", "clamp_scale", "centering_only"]
 
   # Fixed parameters for sweep
   input_proj_type:
@@ -40,6 +37,8 @@ parameters:
     value: 0.9
   optimizer:
     value: "sgd"
+  mlr_type:
+    value: "fc_mlr"
   warmup_epochs:
     value: 10
   batch_size:

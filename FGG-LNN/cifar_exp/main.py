@@ -881,8 +881,7 @@ def main():
     # otherwise uses default_config
     wandb.init(
         project="ICML_Hyperbolic",
-        config=default_config,
-        name="ignore"
+        config=default_config
     )
 
     train(wandb.config)
