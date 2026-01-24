@@ -2,6 +2,7 @@
 from pathlib import Path
 import sys
 import time
+import math
 import random
 
 import numpy as np
@@ -200,26 +201,26 @@ def inspect_model(model, dataloader, device='cuda'):
     print("="*60)
 
     # Check U_norm in all layers
-    print("\n--- U_norm values in LorentzFullyConnected layers ---")
-    for name, module in model.named_modules():
-        if hasattr(module, 'U'):
-            U_norm = module.U.norm(dim=0)
-            print(f"{name}:")
-            print(f"  U_norm: min={U_norm.min().item():.6f}, max={U_norm.max().item():.6f}, mean={U_norm.mean().item():.6f}")
-            if hasattr(module, 'a'):
-                a_vals = module.a
-                print(f"  a: min={a_vals.min().item():.6f}, max={a_vals.max().item():.6f}, mean={a_vals.mean().item():.6f}")
-                # Check effective bias magnitude (a / U_norm)
-                effective = a_vals / U_norm
-                print(f"  a/U_norm: min={effective.min().item():.6f}, max={effective.max().item():.6f}")
+    # print("\n--- U_norm values in LorentzFullyConnected layers ---")
+    # for name, module in model.named_modules():
+    #     if hasattr(module, 'U'):
+    #         U_norm = module.U.norm(dim=0)
+    #         print(f"{name}:")
+    #         print(f"  U_norm: min={U_norm.min().item():.6f}, max={U_norm.max().item():.6f}, mean={U_norm.mean().item():.6f}")
+    #         if hasattr(module, 'a'):
+    #             a_vals = module.a
+    #             print(f"  a: min={a_vals.min().item():.6f}, max={a_vals.max().item():.6f}, mean={a_vals.mean().item():.6f}")
+    #             # Check effective bias magnitude (a / U_norm)
+    #             effective = a_vals / U_norm
+    #             print(f"  a/U_norm: min={effective.min().item():.6f}, max={effective.max().item():.6f}")
 
     # Check z and a in LorentzMLR
-    print("\n--- LorentzMLR parameters ---")
-    for name, module in model.named_modules():
-        if hasattr(module, 'z') and hasattr(module, 'a') and not hasattr(module, 'U'):
-            print(f"{name}:")
-            print(f"  z norm: min={module.z.norm(dim=-1).min().item():.6f}, max={module.z.norm(dim=-1).max().item():.6f}")
-            print(f"  a: min={module.a.min().item():.6f}, max={module.a.max().item():.6f}")
+    # print("\n--- LorentzMLR parameters ---")
+    # for name, module in model.named_modules():
+    #     if hasattr(module, 'z') and hasattr(module, 'a') and not hasattr(module, 'U'):
+    #         print(f"{name}:")
+    #         print(f"  z norm: min={module.z.norm(dim=-1).min().item():.6f}, max={module.z.norm(dim=-1).max().item():.6f}")
+    #         print(f"  a: min={module.a.min().item():.6f}, max={module.a.max().item():.6f}")
 
     # Check BatchNorm parameters - especially stage4.1.bn2
     print("\n--- BatchNorm parameters (gamma/beta for all BN layers) ---")
@@ -741,6 +742,19 @@ def train(config=None):
         )
         val_loss, val_acc = evaluate(model, val_loader, device)
 
+        if not all(map(math.isfinite, [train_loss, train_acc, val_loss, val_acc])):
+            msg = (
+                f"NaN/Inf detected at epoch {epoch + 1}: "
+                f"train_loss={train_loss}, train_acc={train_acc}, "
+                f"val_loss={val_loss}, val_acc={val_acc}"
+            )
+            print(msg)
+            wandb.run.summary["nan_detected"] = True
+            wandb.run.summary["nan_epoch"] = epoch + 1
+            wandb.log({"nan_detected": 1, "nan_epoch": epoch + 1})
+            wandb.finish(exit_code=1)
+            raise RuntimeError(msg)
+
         if scheduler:
             scheduler.step()
 
@@ -872,7 +886,6 @@ def main():
     wandb.init(
         project="ICML_Hyperbolic",
         config=default_config,
-        name="fix_gamma"
     )
 
     train(wandb.config)
