@@ -21,7 +21,7 @@ class LorentzResNet(nn.Module):
         init_method: str = "kaiming",
         input_proj_type: str = "conv_bn_relu",
         mlr_init: str = "mlr",
-        normalisation_mode: str = "normal",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
+        normalisation_mode: str = "normal",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         mlr_type: str = "lorentz_mlr",  # "lorentz_mlr" or "fc_mlr"
     ):
         """
@@ -32,6 +32,7 @@ class LorentzResNet(nn.Module):
                 - "skip_final_bn2": Skip bn2 in the last ResBlock before classifier
                 - "clamp_scale": Clamp BN scale to [0.5, 2.0] without fixing gamma
                 - "mean_only": Mean-only normalization (no variance scaling)
+                - "centering_only": Mean-only normalization with fixed gamma=1
             mlr_type: Choose classifier head implementation.
                 - "lorentz_mlr": Use LorentzMLR
                 - "fc_mlr": Use LorentzFullyConnected with do_mlr=True
@@ -43,10 +44,10 @@ class LorentzResNet(nn.Module):
         self.normalisation_mode = normalisation_mode
 
         # Determine BatchNorm settings based on mode
-        self.fix_gamma = (normalisation_mode == "fix_gamma")
+        self.fix_gamma = (normalisation_mode in {"fix_gamma", "centering_only"})
         self.skip_final_bn2 = (normalisation_mode == "skip_final_bn2")
         self.clamp_scale = (normalisation_mode == "clamp_scale")
-        self.normalize_variance = (normalisation_mode != "mean_only")
+        self.normalize_variance = (normalisation_mode not in {"mean_only", "centering_only"})
 
         # Initial projection: 3 -> 64
         self.input_proj = EuclideanToLorentzConv(

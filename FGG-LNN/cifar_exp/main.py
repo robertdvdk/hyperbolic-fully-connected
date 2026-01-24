@@ -603,7 +603,7 @@ def train(config=None):
         init_method=get_config('init_method', 'lorentz_kaiming'),
         input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
         mlr_init=get_config('mlr_init', 'mlr'),
-        normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
+        normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
     ).to(device)
 
@@ -843,7 +843,7 @@ def main():
         "init_method": "lorentz_kaiming",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
-        "normalisation_mode": "fix_gamma",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", or "mean_only"
+        "normalisation_mode": "fix_gamma",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         "mlr_type": "lorentz_mlr",  # "lorentz_mlr" or "fc_mlr"
 
         # Optimization

@@ -24,7 +24,7 @@ parameters:
     values: ["lorentz_kaiming", "xavier", "kaiming", "eye"]
 
   normalisation_mode:
-    values: ["normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only"]
+    values: ["normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", "centering_only"]
 
   mlr_type:
     values: ["lorentz_mlr", "fc_mlr"]
