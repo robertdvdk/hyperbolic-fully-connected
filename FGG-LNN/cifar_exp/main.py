@@ -925,13 +925,13 @@ def inspect_checkpoint(checkpoint_path):
 
 
 if __name__ == "__main__":
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--inspect', type=str, default=None,
-                        help='Path to checkpoint to inspect (skips training)')
-    args = parser.parse_args()
+    # import argparse
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--inspect', type=str, default=None,
+    #                     help='Path to checkpoint to inspect (skips training)')
+    # args = parser.parse_args()
 
-    if args.inspect:
-        inspect_checkpoint(args.inspect)
-    else:
-        main()
+    # if args.inspect:
+    #     inspect_checkpoint(args.inspect)
+    # else:
+    main()
