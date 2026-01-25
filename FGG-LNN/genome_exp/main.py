@@ -842,7 +842,7 @@ def main():
         "batch_size": 100,
         "num_epochs": 100,
         "grad_clip": 1.0,
-        "manifold_lr": 2e-5,
+        "manifold_lr": 2e-2,
         "manifold_weight_decay": 5e-4,
 
         # Scheduler
