@@ -600,7 +600,20 @@ def train(config=None):
 
     # Model
     manifold = Lorentz(k_value=get_config('curvature', 1.0))
-    normalisation_mode = get_config('normalisation_mode', get_config('bn_mode', 'normal'))
+
+    # Handle coupled norm_config parameter (for sweeps)
+    norm_config = get_config('norm_config', None)
+    if norm_config == "centering_weightnorm":
+        normalisation_mode = "centering_only"
+        use_weight_norm = True
+    elif norm_config == "normal_noweightnorm":
+        normalisation_mode = "normal"
+        use_weight_norm = False
+    else:
+        # Fall back to individual parameters
+        normalisation_mode = get_config('normalisation_mode', get_config('bn_mode', 'normal'))
+        use_weight_norm = get_config('use_weight_norm', False)
+
     mlr_type = get_config('mlr_type', get_config('classifier_type', 'lorentz_mlr'))
     model = lorentz_resnet18(
         num_classes=100,
@@ -611,7 +624,7 @@ def train(config=None):
         mlr_init=get_config('mlr_init', 'mlr'),
         normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
-        use_weight_norm=get_config('use_weight_norm', False),
+        use_weight_norm=use_weight_norm,
     ).to(device)
 
     # Log model size
@@ -641,15 +654,18 @@ def train(config=None):
     if get_config('compile', True):
         model = torch.compile(model)
 
+    # Use param groups: manifold params get 0.2x learning rate
+    model_parameters = get_param_groups(model, lr * 0.2, weight_decay, verbose=True)
+
     if optimizer_name == "adam":
         optimizer = torch.optim.Adam(
-            model.parameters(),
+            model_parameters,
             lr=lr,
             weight_decay=weight_decay
         )
     elif optimizer_name == "sgd":
         momentum = get_config('momentum', 0.9)
-        optimizer = RiemannianSGD(params=model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True, stabilize=1)
+        optimizer = RiemannianSGD(params=model_parameters, lr=lr, momentum=momentum, weight_decay=weight_decay, nesterov=True, stabilize=1)
     else:
         raise ValueError(f"Unknown optimizer: {optimizer_name}")
 
@@ -658,12 +674,18 @@ def train(config=None):
     num_epochs = get_config('num_epochs', 100)
     warmup_epochs = get_config('warmup_epochs', 0)
 
+    # For StepLR: track first milestone to skip decay for manifold params
+    steplr_first_milestone = None
+    steplr_gamma = None
+
     if scheduler_type == 'steplr':
         from torch.optim.lr_scheduler import SequentialLR, MultiStepLR, LinearLR
 
-        # Milestones at ~40%, 70%, 90% of training
+        # Milestones at ~30%, 60%, 80% of training
         milestones = get_config('milestones', [int(num_epochs * 0.3), int(num_epochs * 0.6), int(num_epochs * 0.8)])
         gamma = get_config('lr_decay', 0.2)
+        steplr_first_milestone = milestones[0]
+        steplr_gamma = gamma
 
         if warmup_epochs > 0:
             warmup_scheduler = LinearLR(
@@ -756,11 +778,17 @@ def train(config=None):
         if scheduler:
             scheduler.step()
 
+        # Skip first LR decay for manifold parameters (StepLR only)
+        # Manifold params start at 0.2x LR; after first milestone they sync with standard params
+        if steplr_first_milestone is not None and (epoch + 1) == steplr_first_milestone:
+            optimizer.param_groups[1]['lr'] *= (1 / steplr_gamma)
+            print(f"  Skipped lr drop for manifold parameters (restored to {optimizer.param_groups[1]['lr']:.6f})")
+
         epoch_time = time.time() - start
 
         # Debug inspection at intervals
-        if debug_interval > 0 and (epoch + 1) % debug_interval == 0:
-            inspect_model(model, train_loader, device)
+        # if debug_interval > 0 and (epoch + 1) % debug_interval == 0:
+        #     inspect_model(model, train_loader, device)
 
         # Log metrics
         metrics = {
@@ -857,20 +885,11 @@ def main():
     For standalone: wandb.init() uses the default config below
     """
 
-    import argparse
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--learning_rate', type=float)
-    parser.add_argument('--weight_decay', type=float)
-    parser.add_argument('--scheduler', type=str)
-    parser.add_argument('--normalisation_mode', type=str)
-    parser.add_argument('--group', type=str, default=None)
-    args, _ = parser.parse_known_args()
-
     default_config = {
         # Model
         "hidden_dim": 64,
         "curvature": 1.0,
-        "init_method": "lorentz_kaiming",
+        "init_method": "xavier",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
         "normalisation_mode": "centering_only",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
@@ -878,21 +897,21 @@ def main():
 
         # Optimization
         "optimizer": "sgd",
-        "learning_rate": 5e-2,
+        "learning_rate": 1e-1,
         "weight_decay": 1e-3,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 200,
+        "num_epochs": 50,
         "grad_clip": 1.0,
 
         # Scheduler
         "scheduler": "cosine",
-        "warmup_epochs": 10,
+        "warmup_epochs": 5,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 1.0,
+        "train_subset_fraction": 0.25,
         "data_split_seed": 42,
 
         # Early stopping
@@ -910,19 +929,12 @@ def main():
         "inspect_only": False,      # If True, just inspect the model and exit
         "debug_interval": 5,       # Inspect model every N epochs (0 to disable)
         "use_weight_norm": True,
-    }
-
-    # Override with CLI args if provided
-    for key in ['learning_rate', 'weight_decay', 'scheduler', 'normalisation_mode']:
-        val = getattr(args, key, None)
-        if val is not None:
-            default_config[key] = val
+    } 
 
     # wandb.init() will use sweep config if run by wandb agent,
     # otherwise uses default_config
     wandb.init(
         project="hyperbolic-fully-connected-FGG-LNN_cifar_exp",
-        group=args.group,
         config=default_config
     )
 
