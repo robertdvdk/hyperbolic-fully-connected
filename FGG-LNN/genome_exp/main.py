@@ -133,7 +133,7 @@ class GenomeDataset(Dataset):
         sequence = sequence[:self.max_length]
 
         integer_encoded = [self.BASE_TO_INT.get(base, 4) for base in sequence]
-        one_hot = np.zeros((5, self.max_length), dtype=np.float32)
+        one_hot = np.zeros((5, self.max_length), dtype=np.float64)
         one_hot[integer_encoded, np.arange(len(sequence))] = 1
 
         return torch.from_numpy(one_hot)
@@ -292,7 +292,7 @@ def train_epoch(
     all_preds, all_labels = [], []
 
     for batch_idx, (x, y) in enumerate(train_loader):
-        x, y = x.double().to(device), y.double().to(device)
+        x, y = x.double().to(device), y.long().to(device)
 
         if nan_check:
             if _any_nan_inf(x):
@@ -351,7 +351,7 @@ def evaluate(model, loader, device='cuda', nan_check: bool = False, epoch_idx: i
 
     with torch.no_grad():
         for batch_idx, (x, y) in enumerate(loader):
-            x, y = x.double().to(device), y.double().to(device)
+            x, y = x.double().to(device), y.long().to(device)
 
             if nan_check:
                 if _any_nan_inf(x):
@@ -449,6 +449,7 @@ def train(config=None):
 
     # Reproducibility
     seed_everything(get_config('seed', 42))
+    torch.set_default_dtype(torch.float64)
     device = get_config('device', 'cuda' if torch.cuda.is_available() else 'cpu')
 
     # Data
@@ -498,7 +499,7 @@ def train(config=None):
             fc_dim=get_config('embedding_dim', 528),
             num_layers=get_config('num_layers', 3),
             kernel_size=get_config('kernel_size', 9),
-        ).to(device)
+        ).double().to(device)
 
     # Optional NaN/Inf debugging
     if get_config("nan_debug", False):
