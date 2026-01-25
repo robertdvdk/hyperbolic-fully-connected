@@ -454,7 +454,7 @@ def train(config=None):
     # Data
     data_path = get_config('data_path', './HGE/GUE')
     length = get_config('length', 0)
-    if length is 0:
+    if length == 0:
         length = resolve_length(get_config('dataset_name', ''))
 
     train_loader, val_loader, test_loader = get_dataloaders(
@@ -516,7 +516,7 @@ def train(config=None):
     lr = get_config('learning_rate', 1e-4)
     weight_decay = get_config('weight_decay', 0.1)
 
-    model_parameters = get_param_groups(model, get_config('manifold_lr', 2e-2), get_config('manifold_weight_decay'))
+    model_parameters = get_param_groups(model, get_config('manifold_lr', 2e-2), get_config('manifold_weight_decay', 5e-4))
 
     if optimizer_name == "adam":
         optimizer = torch.optim.Adam(
@@ -688,6 +688,127 @@ def train(config=None):
     return best_val_mcc
 
 
+# ============================================================================
+# Multi-Dataset Training
+# ============================================================================
+
+# All TEB datasets with their sequence lengths
+TEB_DATASETS = {
+    "processed_pseudogenes": 1000,
+    "unprocessed_pseudogenes": 1000,
+    "sines": 500,
+    "lines": 1000,
+    "ltr_copia": 500,
+    "dna_cmc": 200,
+    "dna_hat_ac": 1000,
+}
+
+
+def train_all_datasets(config):
+    """
+    Train on all TEB datasets and compute aggregate metrics.
+
+    This function trains a fresh model on each dataset with the same
+    hyperparameters, then computes aggregate metrics for hyperparameter
+    selection.
+
+    Returns:
+        dict: Results containing per-dataset and aggregate metrics
+    """
+    def get_config(key, default=None):
+        if hasattr(config, key):
+            return getattr(config, key)
+        elif isinstance(config, dict):
+            return config.get(key, default)
+        else:
+            return default
+
+    results = {}
+    val_mccs = []
+    test_mccs = []
+
+    for dataset_name, length in TEB_DATASETS.items():
+        print(f"\n{'='*60}")
+        print(f"Training on dataset: {dataset_name}")
+        print(f"{'='*60}\n")
+
+        # Create a modified config for this dataset
+        dataset_config = dict(config) if isinstance(config, dict) else dict(config._items)
+        dataset_config['dataset_name'] = dataset_name
+        dataset_config['length'] = length
+
+        # Train on this dataset
+        try:
+            best_val_mcc = train(dataset_config)
+
+            # Get test MCC from wandb summary
+            test_mcc = wandb.run.summary.get(f"test_mcc", 0.0)
+
+            results[dataset_name] = {
+                'val_mcc': best_val_mcc,
+                'test_mcc': test_mcc,
+            }
+            val_mccs.append(best_val_mcc)
+            test_mccs.append(test_mcc)
+
+            # Log per-dataset metrics
+            wandb.log({
+                f"dataset/{dataset_name}/val_mcc": best_val_mcc,
+                f"dataset/{dataset_name}/test_mcc": test_mcc,
+            })
+
+        except Exception as e:
+            print(f"Error training on {dataset_name}: {e}")
+            results[dataset_name] = {'val_mcc': 0.0, 'test_mcc': 0.0, 'error': str(e)}
+            val_mccs.append(0.0)
+            test_mccs.append(0.0)
+
+    # Compute aggregate metrics
+    if val_mccs:
+        # Mean MCC
+        mean_val_mcc = sum(val_mccs) / len(val_mccs)
+        mean_test_mcc = sum(test_mccs) / len(test_mccs)
+
+        # Min MCC (worst-case performance)
+        min_val_mcc = min(val_mccs)
+        min_test_mcc = min(test_mccs)
+
+        # Harmonic mean (penalizes low values more)
+        def harmonic_mean(values):
+            # Shift by small epsilon to avoid division by zero for negative MCCs
+            shifted = [max(v + 1.0, 1e-6) for v in values]  # MCC in [-1, 1] -> [0, 2]
+            hm = len(shifted) / sum(1.0/v for v in shifted)
+            return hm - 1.0  # Shift back
+
+        harmonic_val_mcc = harmonic_mean(val_mccs)
+        harmonic_test_mcc = harmonic_mean(test_mccs)
+
+        # Log aggregate metrics
+        wandb.log({
+            "aggregate/mean_mcc": mean_val_mcc,
+            "aggregate/min_mcc": min_val_mcc,
+            "aggregate/harmonic_mcc": harmonic_val_mcc,
+            "aggregate/mean_test_mcc": mean_test_mcc,
+            "aggregate/min_test_mcc": min_test_mcc,
+            "aggregate/harmonic_test_mcc": harmonic_test_mcc,
+        })
+
+        # Also set in summary for sweep optimization
+        wandb.run.summary["aggregate/mean_mcc"] = mean_val_mcc
+        wandb.run.summary["aggregate/min_mcc"] = min_val_mcc
+        wandb.run.summary["aggregate/harmonic_mcc"] = harmonic_val_mcc
+
+        print(f"\n{'='*60}")
+        print("AGGREGATE RESULTS")
+        print(f"{'='*60}")
+        print(f"Mean Val MCC:     {mean_val_mcc:.4f}")
+        print(f"Min Val MCC:      {min_val_mcc:.4f}")
+        print(f"Harmonic Val MCC: {harmonic_val_mcc:.4f}")
+        print(f"Mean Test MCC:    {mean_test_mcc:.4f}")
+
+    return results
+
+
 def main():
     """Entry point for standalone runs and W&B sweeps."""
     default_config = {
@@ -748,7 +869,13 @@ def main():
         config=default_config
     )
 
-    train(wandb.config)
+    # Check if we should train on all datasets
+    dataset_name = wandb.config.get('dataset_name', default_config['dataset_name'])
+    if dataset_name == "all":
+        train_all_datasets(wandb.config)
+    else:
+        train(wandb.config)
+
     wandb.finish()
 
 

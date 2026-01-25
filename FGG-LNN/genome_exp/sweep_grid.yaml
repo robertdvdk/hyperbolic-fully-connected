@@ -1,0 +1,77 @@
+# W&B Grid Sweep configuration for genome hyperbolic experiments
+# Usage: wandb sweep sweep_grid.yaml
+#
+# This is a grid search with discrete values for all parameters.
+# More exhaustive but slower than Bayesian optimization.
+
+program: main.py
+method: grid
+metric:
+  name: aggregate/mean_mcc
+  goal: maximize
+
+parameters:
+  # Data - train on all datasets
+  data_path:
+    value: "./TEB/"
+  dataset_name:
+    value: "all"
+  benchmark:
+    value: "TEB"
+  num_classes:
+    value: 2
+
+  # Model architecture (fixed for grid)
+  manifold:
+    value: "lorentz"
+  num_channels:
+    value: 32
+  embedding_dim:
+    value: 528
+  num_layers:
+    value: 3
+  kernel_size:
+    value: 9
+  curvature:
+    value: 1.0
+  use_bn:
+    value: true
+  mlr_type:
+    value: "fc_mlr"
+  use_weight_norm:
+    values: [true, false]
+  bn_mode:
+    values: ["normal", "centering_only"]
+
+  # Optimization (discrete grid)
+  optimizer:
+    values: ["riemannian_sgd", "riemannian_adam"]
+  learning_rate:
+    values: [1e-4, 5e-4, 1e-3, 5e-3]
+  manifold_lr:
+    values: [1e-3, 1e-2, 5e-2]
+  weight_decay:
+    values: [1e-2, 5e-2, 1e-1]
+  manifold_weight_decay:
+    values: [1e-4, 5e-4]
+
+  batch_size:
+    value: 100
+  num_epochs:
+    value: 100
+  grad_clip:
+    value: 1.0
+
+  # Scheduler
+  scheduler:
+    values: ["multistep", "cosine"]
+  milestones:
+    value: [60, 85]
+  lr_decay:
+    value: 0.1
+
+  # Misc
+  seed:
+    value: 42
+  evaluate_test:
+    value: true

@@ -1,36 +1,37 @@
 # W&B Sweep configuration for genome hyperbolic experiments
 # Usage: wandb sweep sweep_config.yaml
+#
+# This sweep trains on ALL TEB datasets and optimizes the aggregate MCC.
+# The aggregate metric is the average normalized MCC across datasets.
 
 program: main.py
-method: grid
+method: bayes  # Use Bayesian optimization for continuous parameters
 metric:
-  name: val/mcc
+  name: aggregate/mean_mcc
   goal: maximize
 
 parameters:
-  # Data
+  # Data - train on all datasets
   data_path:
     value: "./TEB/"
   dataset_name:
-    values: ["processed_pseudogenes", "unprocessed_pseudogenes", "sines", "lines", "ltr_copia", "dna_cmc", "dna_hat_ac"]
+    value: "all"  # Special value to train on all datasets
   benchmark:
     value: "TEB"
-  length:
-    value: 0
   num_classes:
     value: 2
 
-  # Model
+  # Model architecture
   manifold:
     value: "lorentz"
   num_channels:
-    value: 32
+    values: [32, 64]
   embedding_dim:
     value: 528
   num_layers:
-    value: 3
+    values: [2, 3, 4]
   kernel_size:
-    value: 9
+    values: [7, 9, 11]
   curvature:
     value: 1.0
   use_bn:
@@ -40,26 +41,23 @@ parameters:
   use_weight_norm:
     values: [true, false]
   bn_mode:
-    values: ["normal", "centering_only", "clamp_scale"]
+    values: ["normal", "centering_only"]
 
   # Optimization
   optimizer:
     values: ["riemannian_sgd", "riemannian_adam"]
   learning_rate:
     distribution: log_uniform_values
-    min: 1e-5
+    min: 1e-4
     max: 1e-2
-
   manifold_lr:
     distribution: log_uniform_values
     min: 1e-4
     max: 1e-1
-  
   weight_decay:
     distribution: log_uniform_values
-    min: 1e-2
+    min: 1e-3
     max: 1.0
-
   manifold_weight_decay:
     distribution: log_uniform_values
     min: 1e-5
@@ -74,7 +72,7 @@ parameters:
 
   # Scheduler
   scheduler:
-    value: ["multistep", "cosine"]
+    values: ["multistep", "cosine"]
   milestones:
     value: [60, 85]
   lr_decay:
@@ -84,4 +82,4 @@ parameters:
   seed:
     value: 42
   evaluate_test:
-    value: false
+    value: true  # Evaluate on test set for final reporting
