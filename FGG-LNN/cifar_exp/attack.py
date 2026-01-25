@@ -183,21 +183,35 @@ def load_model_from_checkpoint(checkpoint_path, device, args):
     hidden_dim = args.hidden_dim if args.hidden_dim is not None else config.get('hidden_dim', 64)
     curvature = args.curvature if args.curvature is not None else config.get('curvature', 1.0)
     init_method = args.init_method if args.init_method is not None else config.get('init_method', 'lorentz_kaiming')
+    input_proj_type = config.get('input_proj_type', 'conv_bn_relu')
+    mlr_init = config.get('mlr_init', 'mlr')
+    normalisation_mode = config.get('normalisation_mode', 'normal')
+    mlr_type = config.get('mlr_type', 'fc_mlr')
+    use_weight_norm = config.get('use_weight_norm', False)
 
     # Num classes
     num_classes_map = {'cifar10': 10, 'cifar100': 100, 'imagenet200': 200, 'imagenet1k': 1000}
     num_classes = num_classes_map.get(args.id_name, 100)
 
-    print(f"Reconstructing model: hidden_dim={hidden_dim}, k={curvature}, init={init_method}, classes={num_classes}")
+    print(
+        "Reconstructing model: "
+        f"hidden_dim={hidden_dim}, k={curvature}, init={init_method}, classes={num_classes}, "
+        f"input_proj_type={input_proj_type}, mlr_init={mlr_init}, normalisation_mode={normalisation_mode}, mlr_type={mlr_type}, use_weight_norm={use_weight_norm}"
+    )
 
     # Create model
-    manifold = Lorentz(k=curvature)
+    manifold = Lorentz(k_value=curvature)
     model = lorentz_resnet18(
         num_classes=num_classes,
         base_dim=hidden_dim,
         manifold=manifold,
         # activation=nn.ReLU,
         init_method=init_method,
+        input_proj_type=input_proj_type,
+        mlr_init=mlr_init,
+        normalisation_mode=normalisation_mode,
+        mlr_type=mlr_type,
+        use_weight_norm=use_weight_norm,
     )
 
     # Load weights
@@ -205,7 +219,7 @@ def load_model_from_checkpoint(checkpoint_path, device, args):
     if any(k.startswith('_orig_mod.') for k in state_dict.keys()):
         state_dict = {k.replace('_orig_mod.', ''): v for k, v in state_dict.items()}
 
-    model.load_state_dict(state_dict)
+    model.load_state_dict(state_dict, strict=True)
     model.to(device)
     model.eval()
     

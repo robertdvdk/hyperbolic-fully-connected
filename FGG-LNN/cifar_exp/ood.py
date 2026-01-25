@@ -113,6 +113,9 @@ def load_model_from_checkpoint(checkpoint_path, device, args):
     init_method = args.init_method if args.init_method is not None else config.get('init_method', 'lorentz_kaiming')
     input_proj_type = config.get('input_proj_type', 'conv_bn_relu')
     mlr_init = config.get('mlr_init', 'mlr')
+    normalisation_mode = config.get('normalisation_mode', 'normal')
+    mlr_type = config.get('mlr_type', 'fc_mlr')
+    use_weight_norm = config.get('use_weight_norm', False)
 
     # Determine num_classes from id_name
     num_classes_map = {
@@ -129,10 +132,13 @@ def load_model_from_checkpoint(checkpoint_path, device, args):
     print(f"  init_method: {init_method}")
     print(f"  input_proj_type: {input_proj_type}")
     print(f"  mlr_init: {mlr_init}")
+    print(f"  normalisation_mode: {normalisation_mode}")
+    print(f"  mlr_type: {mlr_type}")
+    print(f"  use_weight_norm: {use_weight_norm}")
     print(f"  num_classes: {num_classes}")
 
     # Create manifold and model
-    manifold = Lorentz(k=curvature)
+    manifold = Lorentz(k_value=curvature)
     model = lorentz_resnet18(
         num_classes=num_classes,
         base_dim=hidden_dim,
@@ -140,6 +146,9 @@ def load_model_from_checkpoint(checkpoint_path, device, args):
         init_method=init_method,
         input_proj_type=input_proj_type,
         mlr_init=mlr_init,
+        normalisation_mode=normalisation_mode,
+        mlr_type=mlr_type,
+        use_weight_norm=use_weight_norm,
     )
 
     # Load weights (handle torch.compile() prefix if present)
@@ -255,12 +264,12 @@ if __name__ == '__main__':
     args = get_arguments()
 
     # Check OpenOOD is installed
-    try:
-        from openood.evaluation_api import Evaluator
-    except ImportError:
-        print("ERROR: OpenOOD not installed!")
-        print("Please run: pip install git+https://github.com/Jingkang50/OpenOOD")
-        print("            pip install libmr")
-        exit(1)
+    # try:
+    from openood.evaluation_api import Evaluator
+    # except ImportError:
+        # print("ERROR: OpenOOD not installed!")
+        # print("Please run: pip install git+https://github.com/Jingkang50/OpenOOD")
+        # print("            pip install libmr")
+        # exit(1)
 
     main(args)
