@@ -615,17 +615,24 @@ def train(config=None):
         use_weight_norm = get_config('use_weight_norm', False)
 
     mlr_type = get_config('mlr_type', get_config('classifier_type', 'lorentz_mlr'))
-    model = lorentz_resnet18(
-        num_classes=100,
-        base_dim=get_config('hidden_dim', 64),
-        manifold=manifold,
-        init_method=get_config('init_method', 'lorentz_kaiming'),
-        input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
-        mlr_init=get_config('mlr_init', 'mlr'),
-        normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
-        mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
-        use_weight_norm=use_weight_norm,
-    ).to(device)
+
+    if get_config("manifold", "lorentz") == "euclidean":
+        model = torchvision.models.resnet18(num_classes=100)
+        model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
+        model.maxpool = nn.Identity()
+        model = model.to(device)
+    else:
+        model = lorentz_resnet18(
+            num_classes=100,
+            base_dim=get_config('hidden_dim', 64),
+            manifold=manifold,
+            init_method=get_config('init_method', 'lorentz_kaiming'),
+            input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
+            mlr_init=get_config('mlr_init', 'mlr'),
+            normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
+            mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
+            use_weight_norm=use_weight_norm,
+        ).to(device)
 
     # Log model size
     total_params = sum(p.numel() for p in model.parameters())
@@ -892,26 +899,27 @@ def main():
         "init_method": "xavier",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
-        "normalisation_mode": "centering_only",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
+        "normalisation_mode": "clamp_scale",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         "mlr_type": "fc_mlr",  # "lorentz_mlr" or "fc_mlr"
+        "manifold": "lorentz",
 
         # Optimization
         "optimizer": "sgd",
         "learning_rate": 1e-1,
-        "weight_decay": 1e-3,
+        "weight_decay": 5e-4,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 50,
+        "num_epochs": 200,
         "grad_clip": 1.0,
 
         # Scheduler
-        "scheduler": "cosine",
-        "warmup_epochs": 5,
+        "scheduler": "steplr",
+        "warmup_epochs": 10,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 0.25,
+        "train_subset_fraction": 1.0,
         "data_split_seed": 42,
 
         # Early stopping
@@ -928,13 +936,13 @@ def main():
         "resume_checkpoint": None,  # Path to checkpoint to resume from
         "inspect_only": False,      # If True, just inspect the model and exit
         "debug_interval": 5,       # Inspect model every N epochs (0 to disable)
-        "use_weight_norm": True,
+        "use_weight_norm": False,
     } 
 
     # wandb.init() will use sweep config if run by wandb agent,
     # otherwise uses default_config
     wandb.init(
-        project="hyperbolic-fully-connected-FGG-LNN_cifar_exp",
+        project="ICML_Hyperbolic",
         config=default_config
     )
 
