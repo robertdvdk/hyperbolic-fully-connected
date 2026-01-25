@@ -1,14 +1,22 @@
 import torch
 import torch.nn as nn
-from layers import Lorentz
+from .lorentz import Lorentz
 from geoopt import ManifoldParameter
 
-class LorentzBatchNorm2d(nn.Module):
+
+class LorentzBatchNormBase(nn.Module):
     """
-    Lorentz Batch Normalization following Bdeir et al.
-    Simplified to use manifold primitives.
+    Base class for Lorentz Batch Normalization following Bdeir et al.
+
+    The normalization happens in tangent space:
+    1. Compute batch centroid (Fréchet mean) on the manifold
+    2. Log-map points to tangent space at centroid
+    3. Transport tangent vectors to origin
+    4. Scale by gamma / std
+    5. Transport to learned center beta
+    6. Exp-map back to manifold
     """
-    
+
     def __init__(
         self,
         num_features: int,
@@ -20,87 +28,147 @@ class LorentzBatchNorm2d(nn.Module):
         normalize_variance: bool = True,
     ):
         super().__init__()
-        self.manifold = manifold or Lorentz(k=1.0)
+        self.manifold = manifold or Lorentz(k_value=1.0)
         self.num_features = num_features
         self.momentum = momentum
         self.eps = eps
         self.fix_gamma = fix_gamma
         self.clamp_scale = clamp_scale
         self.normalize_variance = normalize_variance
-        
+
         # Learnable scale (positive real)
         if fix_gamma:
-            # Fixed gamma=1, not learnable (forces linear layers to handle scaling)
             self.register_buffer('gamma', torch.ones((1,)))
         else:
-            self.gamma = torch.nn.Parameter(torch.ones((1,)))
-        
-        # Learnable shift (space components, will be projected to manifold)
-        self.beta = ManifoldParameter(self.manifold.origin(num_features), manifold=self.manifold)
-        
-        # Running statistics (store space components of centroid)
+            self.gamma = nn.Parameter(torch.ones((1,)))
+
+        # Learnable center on manifold
+        self.beta = ManifoldParameter(
+            self.manifold.origin(num_features),
+            manifold=self.manifold
+        )
+
+        # Running statistics
         self.register_buffer('running_mean', self.manifold.origin(dim=num_features))
         self.register_buffer('running_var', torch.ones(1))
-    
-    def _to_flat(self, x: torch.Tensor) -> torch.Tensor:
-        """[B, C, H, W] -> [B*H*W, C]"""
-        return x.permute(0, 2, 3, 1).reshape(-1, x.shape[1])
-    
-    def _to_spatial(self, x_flat: torch.Tensor, batch: int, H: int, W: int) -> torch.Tensor:
-        """[B*H*W, C] -> [B, C, H, W]"""
-        return x_flat.view(batch, H, W, -1).permute(0, 3, 1, 2)
-    
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        batch, C, H, W = x.shape
-        x_flat = self._to_flat(x)  # [N, C]
 
+    def _to_flat(self, x: torch.Tensor) -> torch.Tensor:
+        """Flatten spatial dimensions. Override in subclasses."""
+        raise NotImplementedError
+
+    def _to_spatial(self, x_flat: torch.Tensor, *shape_info) -> torch.Tensor:
+        """Restore spatial dimensions. Override in subclasses."""
+        raise NotImplementedError
+
+    def _forward_flat(self, x_flat: torch.Tensor) -> torch.Tensor:
+        """
+        Core batch norm logic on flattened input.
+
+        Args:
+            x_flat: [N, C] where N = batch * spatial_dims, C = num_features
+
+        Returns:
+            Normalized output [N, C]
+        """
         if self.training:
-            # Calculate mean and variance
+            # Compute batch centroid
             mean = self.manifold.centroid(x_flat).unsqueeze(0)
+
+            # Compute variance if needed
             if self.normalize_variance:
                 var = (self.manifold.dist(x_flat, mean, keepdim=False) ** 2).mean()
                 div_factor = torch.sqrt(var + self.eps)
             else:
+                var = None
                 div_factor = 1.0
 
-            # Get tangent vectors, and transport them to the origin (analogous to subtracting the mean in Euclidean space)
-            xT_at_mu = self.manifold.logmap(mean, x_flat)  # [N, C]
+            # Log-map to tangent space at mean, then transport to origin
+            xT_at_mu = self.manifold.logmap(mean, x_flat)
             xT_at_origin = self.manifold.transp_to_origin(mean, xT_at_mu)
 
-            # Divide tangent vectors by std and multiply by learned std
+            # Scale tangent vectors
             scale = self.gamma / div_factor
             if self.clamp_scale and self.normalize_variance:
                 scale = torch.clamp(scale, min=0.5, max=2.0)
             xT_at_origin = xT_at_origin * scale
 
+            # Update running statistics
             with torch.no_grad():
                 means = torch.cat([self.running_mean.unsqueeze(0), mean.detach()])
-                self.running_mean.copy_(self.manifold.centroid(
-                            means,
-                            weights=torch.tensor(((1 - self.momentum), self.momentum), device=means.device),
-                        ))
-                if self.normalize_variance:
-                    self.running_var.copy_((1 - self.momentum)*self.running_var + self.momentum*var.detach())
+                self.running_mean.copy_(
+                    self.manifold.centroid(
+                        means,
+                        weights=torch.tensor(
+                            (1 - self.momentum, self.momentum),
+                            device=means.device
+                        ),
+                    )
+                )
+                if self.normalize_variance and var is not None:
+                    self.running_var.copy_(
+                        (1 - self.momentum) * self.running_var + self.momentum * var.detach()
+                    )
         else:
-            # Get tangent vectors at running mean, and transport them to the origin (analogous to subtracting the running mean in Euclidean space)
+            # Use running statistics
             xT_at_running_mu = self.manifold.logmap(self.running_mean, x_flat)
             xT_at_origin = self.manifold.transp_to_origin(self.running_mean, xT_at_running_mu)
 
-            # Divide tangent vectors by running std and multiply by learned std
             if self.normalize_variance:
                 div_factor = torch.sqrt(self.running_var + self.eps)
             else:
                 div_factor = 1.0
+
             scale = self.gamma / div_factor
             if self.clamp_scale and self.normalize_variance:
                 scale = torch.clamp(scale, min=0.5, max=2.0)
             xT_at_origin = xT_at_origin * scale
 
-        # Transport tangent vectors to beta, and expmap at beta (analogous to adding the mean in Euclidean space)
+        # Transport to beta and exp-map back to manifold
         xT_at_beta = self.manifold.transp_from_origin(xT_at_origin, self.beta)
         output = self.manifold.expmap(self.beta, xT_at_beta)
-        output = self._to_spatial(output, batch, H, W)
-
 
         return output
-    
+
+
+class LorentzBatchNorm1d(LorentzBatchNormBase):
+    """
+    1D Lorentz Batch Normalization for sequence data.
+
+    Input shape: [B, C, L] where C = num_features (including time component)
+    """
+
+    def _to_flat(self, x: torch.Tensor) -> torch.Tensor:
+        """[B, C, L] -> [B*L, C]"""
+        return x.permute(0, 2, 1).reshape(-1, x.shape[1])
+
+    def _to_spatial(self, x_flat: torch.Tensor, batch: int, L: int) -> torch.Tensor:
+        """[B*L, C] -> [B, C, L]"""
+        return x_flat.view(batch, L, -1).permute(0, 2, 1)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch, C, L = x.shape
+        x_flat = self._to_flat(x)
+        output_flat = self._forward_flat(x_flat)
+        return self._to_spatial(output_flat, batch, L)
+
+
+class LorentzBatchNorm2d(LorentzBatchNormBase):
+    """
+    2D Lorentz Batch Normalization for image data.
+
+    Input shape: [B, C, H, W] where C = num_features (including time component)
+    """
+
+    def _to_flat(self, x: torch.Tensor) -> torch.Tensor:
+        """[B, C, H, W] -> [B*H*W, C]"""
+        return x.permute(0, 2, 3, 1).reshape(-1, x.shape[1])
+
+    def _to_spatial(self, x_flat: torch.Tensor, batch: int, H: int, W: int) -> torch.Tensor:
+        """[B*H*W, C] -> [B, C, H, W]"""
+        return x_flat.view(batch, H, W, -1).permute(0, 3, 1, 2)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        batch, C, H, W = x.shape
+        x_flat = self._to_flat(x)
+        output_flat = self._forward_flat(x_flat)
+        return self._to_spatial(output_flat, batch, H, W)

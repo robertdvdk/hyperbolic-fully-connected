@@ -41,6 +41,13 @@ class Lorentz(nn.Module):
     def preactivation_map(self, a):
         y_space = 1 / self.k() * torch.sinh(self.k().sqrt() * a)
         return self.projection_space_orthogonal(y_space, manifold_dim=1)
+    
+    def component_inner(
+        self, x: torch.Tensor, u: torch.Tensor, v: torch.Tensor = None, *, dim=-1
+    ) -> torch.Tensor:
+        if v is None:
+            v = u
+        return self._inner(u, v, keepdim=True, dim=dim)
 
     def expmap0(self, x):
         """

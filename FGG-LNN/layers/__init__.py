@@ -1,9 +1,27 @@
 """Hyperbolic layers package"""
 
 from .lorentz import Lorentz
-from .LLinear import LorentzFullyConnected
+from .LLinear import LorentzFullyConnected, LorentzMLR
 from .chen import ChenLinear
 from .poincare import Poincare, Poincare_linear, project, PoincareActivation
 from .LResNet import lorentz_resnet18
+from .LConv import LorentzConv2d
+from .LConv1d import LorentzConv1d, LorentzReLU
+from .LBatchNormNew import LorentzBatchNormBase, LorentzBatchNorm1d, LorentzBatchNorm2d
 
-__all__ = ["Lorentz", "LorentzFullyConnected", "ChenLinear", "Poincare", "Poincare_linear", "project", "lorentz_resnet18", "PoincareActivation"]
+__all__ = [
+    "Lorentz",
+    "LorentzFullyConnected",
+    "LorentzMLR",
+    "ChenLinear",
+    "Poincare",
+    "Poincare_linear",
+    "project",
+    "lorentz_resnet18",
+    "LorentzConv2d",
+    "LorentzConv1d",
+    "LorentzReLU",
+    "LorentzBatchNormBase",
+    "LorentzBatchNorm1d",
+    "LorentzBatchNorm2d",
+]
