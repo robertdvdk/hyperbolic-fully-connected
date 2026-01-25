@@ -832,7 +832,7 @@ def main():
         "fix_gamma": False,
         "mlr_type": "fc_mlr",  # "lorentz_mlr" or "fc_mlr"
         "use_weight_norm": True,
-        "bn_mode": "normal",
+        "bn_mode": "centering_only",
 
         # Optimization
         "optimizer": "riemannian_adam",
@@ -857,11 +857,11 @@ def main():
         # Misc
         "seed": 42,
         "device": "cuda",
-        "compile": False,
+        "compile": True,
         "evaluate_test": True,
         "checkpoint_dir": "./checkpoints",
         "num_workers": 2,
-        "nan_debug": True,
+        "nan_debug": False,
     }
 
     wandb.init(
