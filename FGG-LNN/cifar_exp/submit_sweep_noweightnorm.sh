@@ -1,7 +1,7 @@
 #!/bin/bash -l
 #SBATCH --job-name=cifar_sweep_noweightnorm
 #SBATCH --output=./%x_%j.out
-#SBATCH --time=12:00:00
+#SBATCH --time=03:00:00
 #SBATCH --partition=normal
 #SBATCH --ntasks=1
 #SBATCH --gpus-per-task=4

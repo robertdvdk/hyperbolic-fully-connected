@@ -856,6 +856,16 @@ def main():
     For sweeps: wandb.init() connects to the sweep and populates wandb.config
     For standalone: wandb.init() uses the default config below
     """
+
+    import argparse
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--learning_rate', type=float)
+    parser.add_argument('--weight_decay', type=float)
+    parser.add_argument('--scheduler', type=str)
+    parser.add_argument('--normalisation_mode', type=str)
+    parser.add_argument('--group', type=str, default=None)
+    args, _ = parser.parse_known_args()
+
     default_config = {
         # Model
         "hidden_dim": 64,
@@ -902,10 +912,17 @@ def main():
         "use_weight_norm": True,
     }
 
+    # Override with CLI args if provided
+    for key in ['learning_rate', 'weight_decay', 'scheduler', 'normalisation_mode']:
+        val = getattr(args, key, None)
+        if val is not None:
+            default_config[key] = val
+
     # wandb.init() will use sweep config if run by wandb agent,
     # otherwise uses default_config
     wandb.init(
-        project="ICML_Hyperbolic",
+        project="hyperbolic-fully-connected-FGG-LNN_cifar_exp",
+        group=args.group,
         config=default_config
     )
 
