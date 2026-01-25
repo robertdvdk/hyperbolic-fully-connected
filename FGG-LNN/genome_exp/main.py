@@ -292,7 +292,7 @@ def train_epoch(
     all_preds, all_labels = [], []
 
     for batch_idx, (x, y) in enumerate(train_loader):
-        x, y = x.to(device), y.to(device)
+        x, y = x.double().to(device), y.double().to(device)
 
         if nan_check:
             if _any_nan_inf(x):
@@ -351,7 +351,7 @@ def evaluate(model, loader, device='cuda', nan_check: bool = False, epoch_idx: i
 
     with torch.no_grad():
         for batch_idx, (x, y) in enumerate(loader):
-            x, y = x.to(device), y.to(device)
+            x, y = x.double().to(device), y.double().to(device)
 
             if nan_check:
                 if _any_nan_inf(x):
@@ -487,7 +487,9 @@ def train(config=None):
             normalize_variance=bn_mode_cfg["normalize_variance"],
             mlr_type=get_config('mlr_type', 'fc_mlr'),
             use_weight_norm=get_config('use_weight_norm', False),
-        ).to(device)
+        )
+        model = model.double()
+        model = model.to(device)
     else:
         model = EuclideanCNN(
             num_classes=get_config('num_classes', 2),
