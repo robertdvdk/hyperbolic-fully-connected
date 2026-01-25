@@ -5,7 +5,7 @@ from .lorentz import Lorentz
 from einops import rearrange
 import math
 
-class LorentzFullyConnected(nn.Module):
+class LorentzFullyConnectedOurs(nn.Module):
     def __init__(
         self,
         in_features,
@@ -180,3 +180,108 @@ class LorentzMLR(nn.Module):
         stdv = 1. / math.sqrt(self.z.size(1))
         nn.init.uniform_(self.z, -stdv, stdv)
         nn.init.uniform_(self.a, -stdv, stdv)
+
+
+class LorentzFullyConnectedTheirs(nn.Module):
+    """
+        Modified Lorentz fully connected layer of Chen et al. (2022).
+
+        Code modified from https://github.com/chenweize1998/fully-hyperbolic-nn
+
+        args:
+            manifold: Instance of Lorentz manifold
+            in_features, out_features, bias: Same as nn.Linear
+            init_scale: Scale parameter for internal normalization
+            learn_scale: If scale parameter should be learnable
+            normalize: If internal normalization should be applied
+    """
+
+    def __init__(
+            self,
+            manifold: Lorentz,
+            in_features,
+            out_features,
+            bias=False,
+            init_scale=None,
+            learn_scale=False,
+            normalize=False,
+            init_method=None,  # Added for compatibility
+            reset_params=None,  # Added for compatibility
+            a_default=None,  # Added for compatibility
+            activation=None,  # Added for compatibility
+            do_mlr=False,  # Added for compatibility
+            mlr_init: str | None = None,  # Added for compatibility
+            use_weight_norm: bool = False,  # Added for compatibility
+            **kwargs,
+        ):
+
+        print("TRUEEEEE")
+        super(LorentzFullyConnectedTheirs, self).__init__()
+        self.manifold = manifold
+        self.in_features = in_features
+        self.out_features = out_features
+        self.bias = bias
+        self.normalize = normalize
+
+        self.weight = nn.Linear(self.in_features, self.out_features, bias=bias)
+
+        self.init_std = 0.02
+        self.reset_parameters()
+
+        # Scale for internal normalization
+        if init_scale is not None:
+            self.scale = nn.Parameter(torch.ones(()) * init_scale, requires_grad=learn_scale)
+        else:
+            self.scale = nn.Parameter(torch.ones(()) * 2.3, requires_grad=learn_scale)
+
+    def forward(self, x):
+
+        x = self.weight(x)
+        x_space = x.narrow(-1, 1, x.shape[-1] - 1)
+
+        if self.normalize:
+            scale = x.narrow(-1, 0, 1).sigmoid() * self.scale.exp()
+            square_norm = (x_space * x_space).sum(dim=-1, keepdim=True)
+
+            mask = square_norm <= 1e-10
+
+            square_norm[mask] = 1
+            unit_length = x_space/torch.sqrt(square_norm)
+            x_space = scale*unit_length
+
+            x_time = torch.sqrt(scale**2 + self.manifold.k + 1e-5)
+            x_time = x_time.masked_fill(mask, self.manifold.k.sqrt())
+
+            mask = mask==False
+            x_space = x_space * mask
+
+            x = torch.cat([x_time, x_space], dim=-1)
+        else:
+            x = self.manifold.add_time(x_space)
+
+        return x
+
+    def reset_parameters(self):
+        nn.init.uniform_(self.weight.weight, -self.init_std, self.init_std)
+
+        if self.bias:
+            nn.init.constant_(self.weight.bias, 0)
+
+
+def resolve_lorentz_fc_class(variant: str):
+    """Resolve Lorentz FC implementation by variant name.
+
+    Supported values:
+        - "ours": LorentzFullyConnectedOurs
+        - "theirs": LorentzFullyConnectedTheirs
+    """
+    key = (variant or "ours").lower()
+    if key in {"ours", "new", "default"}:
+        return LorentzFullyConnectedOurs
+    if key in {"theirs", "old", "legacy"}:
+        return LorentzFullyConnectedTheirs
+    raise ValueError(f"Unknown Lorentz FC variant: {variant}")
+
+
+# Backwards-compatible alias
+LorentzFullyConnected = LorentzFullyConnectedOurs

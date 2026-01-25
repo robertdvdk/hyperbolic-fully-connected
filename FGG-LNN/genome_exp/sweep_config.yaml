@@ -5,7 +5,7 @@
 # The aggregate metric is the average normalized MCC across datasets.
 
 program: main.py
-method: bayes  # Use Bayesian optimization for continuous parameters
+method: random  # Use Bayesian optimization for continuous parameters
 metric:
   name: aggregate/mean_mcc
   goal: maximize
@@ -25,13 +25,13 @@ parameters:
   manifold:
     value: "lorentz"
   num_channels:
-    values: [32, 64]
+    value: 32
   embedding_dim:
     value: 528
   num_layers:
-    values: [2, 3, 4]
+    value: 3
   kernel_size:
-    values: [7, 9, 11]
+    value: 9
   curvature:
     value: 1.0
   use_bn:
@@ -39,13 +39,13 @@ parameters:
   mlr_type:
     value: "fc_mlr"
   use_weight_norm:
-    values: [true, false]
+    value: true
   bn_mode:
-    values: ["normal", "centering_only"]
-
-  # Optimization
+    value: "centering_only"
   optimizer:
-    values: ["riemannian_sgd", "riemannian_adam"]
+    value: "riemannian_adam"
+
+  
   learning_rate:
     distribution: log_uniform_values
     min: 1e-4
@@ -56,8 +56,8 @@ parameters:
     max: 1e-1
   weight_decay:
     distribution: log_uniform_values
-    min: 1e-3
-    max: 1.0
+    min: 1e-4
+    max: 1e-1
   manifold_weight_decay:
     distribution: log_uniform_values
     min: 1e-5
@@ -72,7 +72,7 @@ parameters:
 
   # Scheduler
   scheduler:
-    values: ["multistep", "cosine"]
+    value: "multistep"
   milestones:
     value: [60, 85]
   lr_decay:

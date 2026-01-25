@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from .lorentz import Lorentz
-from .LLinear import LorentzFullyConnected
+from .LLinear import resolve_lorentz_fc_class
 
 
 class LorentzConv1d(nn.Module):
@@ -22,6 +22,7 @@ class LorentzConv1d(nn.Module):
         activation=F.relu,
         init_method: str = "kaiming",
         use_weight_norm: bool = False,
+        fc_variant: str = "ours",
     ):
         super().__init__()
         self.manifold = manifold or Lorentz(k_value=1.0)
@@ -33,8 +34,9 @@ class LorentzConv1d(nn.Module):
         # concat_dim = 1 + (in_channels - 1) * kernel_size
         concat_dim = 1 + (in_channels - 1) * kernel_size
 
-        # Reuse existing Lorentz FC
-        self.fc = LorentzFullyConnected(
+        # Reuse selected Lorentz FC implementation
+        fc_cls = resolve_lorentz_fc_class(fc_variant)
+        self.fc = fc_cls(
             in_features=concat_dim,
             out_features=out_channels,
             manifold=self.manifold,

@@ -622,9 +622,11 @@ def train(config=None):
         model.maxpool = nn.Identity()
         model = model.to(device)
     else:
+        base_dim = get_config('hidden_dim', 64)
+        embedding_dim = get_config('embedding_dim', None)
         model = lorentz_resnet18(
             num_classes=100,
-            base_dim=get_config('hidden_dim', 64),
+            base_dim=base_dim,
             manifold=manifold,
             init_method=get_config('init_method', 'lorentz_kaiming'),
             input_proj_type=get_config('input_proj_type', 'conv_bn_relu'),
@@ -632,6 +634,8 @@ def train(config=None):
             normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
             mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
             use_weight_norm=use_weight_norm,
+            fc_variant=get_config('fc_variant', 'ours'),
+            embedding_dim=embedding_dim,
         ).to(device)
 
     # Log model size
@@ -894,14 +898,16 @@ def main():
 
     default_config = {
         # Model
-        "hidden_dim": 64,
+        "hidden_dim": 4,
+        "embedding_dim": None,  # Optional final embedding dimension before classifier
         "curvature": 1.0,
         "init_method": "xavier",
         "input_proj_type": "conv_bn_relu",
         "mlr_init": "mlr",
-        "normalisation_mode": "clamp_scale",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
+        "normalisation_mode": "centering_only",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         "mlr_type": "fc_mlr",  # "lorentz_mlr" or "fc_mlr"
         "manifold": "lorentz",
+        "fc_variant": "ours",  # "ours" or "theirs"
 
         # Optimization
         "optimizer": "sgd",
@@ -909,17 +915,17 @@ def main():
         "weight_decay": 5e-4,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 200,
+        "num_epochs": 50,
         "grad_clip": 1.0,
 
         # Scheduler
-        "scheduler": "steplr",
-        "warmup_epochs": 10,
+        "scheduler": "cosine",
+        "warmup_epochs": 5,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 1.0,
+        "train_subset_fraction": 0.25,
         "data_split_seed": 42,
 
         # Early stopping
@@ -968,9 +974,11 @@ def inspect_checkpoint(checkpoint_path):
 
     # Create model
     manifold = Lorentz(k_value=config.get('curvature', 1.0))
+    base_dim = config.get('hidden_dim', 64)
+    embedding_dim = config.get('embedding_dim', None)
     model = lorentz_resnet18(
         num_classes=100,
-        base_dim=config.get('hidden_dim', 64),
+        base_dim=base_dim,
         manifold=manifold,
         init_method=config.get('init_method', 'lorentz_kaiming'),
         input_proj_type=config.get('input_proj_type', 'conv_bn_relu'),
@@ -978,6 +986,8 @@ def inspect_checkpoint(checkpoint_path):
         normalisation_mode=config.get('normalisation_mode', config.get('bn_mode', 'normal')),
         mlr_type=config.get('mlr_type', config.get('classifier_type', 'lorentz_mlr')),
         use_weight_norm=config.get('use_weight_norm', False),
+        fc_variant=config.get('fc_variant', 'ours'),
+        embedding_dim=embedding_dim,
     ).to(device)
 
     # Load weights

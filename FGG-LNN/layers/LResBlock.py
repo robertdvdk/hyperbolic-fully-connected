@@ -20,6 +20,7 @@ class LorentzResBlock(nn.Module):
         clamp_scale: bool = False,  # Clamp BN scale to [0.5, 2.0]
         normalize_variance: bool = True,  # If False, mean-only normalization (no variance scaling)
         use_weight_norm: bool = False,
+        fc_variant: str = "ours",
     ):
 
         super().__init__()
@@ -31,6 +32,7 @@ class LorentzResBlock(nn.Module):
             kernel_size=kernel_size, stride=1, padding=padding,
             manifold=manifold, activation=nn.Identity(), init_method=init_method,
             use_weight_norm=use_weight_norm,
+            fc_variant=fc_variant,
         )
         self.bn1 = LorentzBatchNorm2d(
             num_features=output_dim,
@@ -44,6 +46,7 @@ class LorentzResBlock(nn.Module):
             kernel_size=kernel_size, stride=stride, padding=padding,
             manifold=manifold, activation=nn.Identity(), init_method=init_method,
             use_weight_norm=use_weight_norm,
+            fc_variant=fc_variant,
         )
         self.bn2 = None if skip_bn2 else LorentzBatchNorm2d(
             num_features=output_dim,
@@ -58,6 +61,7 @@ class LorentzResBlock(nn.Module):
                 kernel_size=1, stride=stride, padding=0,
                 manifold=manifold, activation=nn.Identity(), init_method=init_method,
                 use_weight_norm=use_weight_norm,
+                fc_variant=fc_variant,
             )]
             proj_layers.append(LorentzBatchNorm2d(
                 num_features=output_dim,

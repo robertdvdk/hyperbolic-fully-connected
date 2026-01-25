@@ -3,7 +3,7 @@ import torch
 import torch.nn as nn
 from typing import Optional, Type
 from .lorentz import Lorentz
-from .LLinear import LorentzFullyConnected, LorentzMLR
+from .LLinear import LorentzMLR, resolve_lorentz_fc_class
 from .LProjection import EuclideanToLorentzConv
 from .LResBlock import LorentzResBlock
 
@@ -24,6 +24,8 @@ class LorentzResNet(nn.Module):
         normalisation_mode: str = "normal",  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
         mlr_type: str = "lorentz_mlr",  # "lorentz_mlr" or "fc_mlr"
         use_weight_norm: bool = False,
+        fc_variant: str = "ours",
+        embedding_dim: Optional[int] = None,
     ):
         """
         Args:
@@ -44,6 +46,10 @@ class LorentzResNet(nn.Module):
         self.init_method = init_method
         self.normalisation_mode = normalisation_mode
         self.use_weight_norm = use_weight_norm
+        self.fc_variant = fc_variant
+        self.embedding_dim = embedding_dim
+        if self.embedding_dim is not None and self.embedding_dim <= 0:
+            raise ValueError("embedding_dim must be positive when set")
 
         # Determine BatchNorm settings based on mode
         self.fix_gamma = (normalisation_mode in {"fix_gamma", "centering_only"})
@@ -71,6 +77,7 @@ class LorentzResNet(nn.Module):
             layers[0],
             stride=1,
             use_weight_norm=self.use_weight_norm,
+            fc_variant=self.fc_variant,
         )
         self.stage2 = self._make_stage(
             base_dim + 1,
@@ -78,6 +85,7 @@ class LorentzResNet(nn.Module):
             layers[1],
             stride=2,
             use_weight_norm=self.use_weight_norm,
+            fc_variant=self.fc_variant,
         )
         self.stage3 = self._make_stage(
             base_dim * 2 + 1,
@@ -85,20 +93,24 @@ class LorentzResNet(nn.Module):
             layers[2],
             stride=2,
             use_weight_norm=self.use_weight_norm,
+            fc_variant=self.fc_variant,
         )
+        final_dim = self.embedding_dim if self.embedding_dim is not None else base_dim * 8
         self.stage4 = self._make_stage(
             base_dim * 4 + 1,
-            base_dim * 8 + 1,
+            final_dim + 1,
             layers[3],
             stride=2,
             is_final_stage=True,  # Might skip bn2 in last block
             use_weight_norm=self.use_weight_norm,
+            fc_variant=self.fc_variant,
         )
 
         # Classifier
         if mlr_type == "fc_mlr":
-            self.classifier = LorentzFullyConnected(
-                in_features=base_dim * 8 + 1,
+            fc_cls = resolve_lorentz_fc_class(self.fc_variant)
+            self.classifier = fc_cls(
+                in_features=final_dim + 1,
                 out_features=num_classes + 1,
                 manifold=self.manifold,
                 reset_params=mlr_init,
@@ -108,7 +120,7 @@ class LorentzResNet(nn.Module):
         elif mlr_type == "lorentz_mlr":
             self.classifier = LorentzMLR(
                 manifold=self.manifold,
-                num_features=base_dim * 8 + 1,
+                num_features=final_dim + 1,
                 num_classes=num_classes,
             )
         else:
@@ -122,6 +134,7 @@ class LorentzResNet(nn.Module):
         stride: int,
         is_final_stage: bool = False,
         use_weight_norm: bool = False,
+        fc_variant: str = "ours",
     ) -> nn.Sequential:
         """Create a stage with multiple residual blocks."""
         blocks = []
@@ -142,6 +155,7 @@ class LorentzResNet(nn.Module):
                 clamp_scale=self.clamp_scale,
                 normalize_variance=self.normalize_variance,
                 use_weight_norm=use_weight_norm,
+                fc_variant=fc_variant,
             )
         )
 
@@ -162,6 +176,7 @@ class LorentzResNet(nn.Module):
                     clamp_scale=self.clamp_scale,
                     normalize_variance=self.normalize_variance,
                     use_weight_norm=use_weight_norm,
+                    fc_variant=fc_variant,
                 )
             )
 

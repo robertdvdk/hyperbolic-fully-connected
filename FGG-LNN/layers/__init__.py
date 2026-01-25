@@ -1,7 +1,13 @@
 """Hyperbolic layers package"""
 
 from .lorentz import Lorentz
-from .LLinear import LorentzFullyConnected, LorentzMLR
+from .LLinear import (
+    LorentzFullyConnectedOurs,
+    LorentzFullyConnectedTheirs,
+    LorentzFullyConnected,
+    LorentzMLR,
+    resolve_lorentz_fc_class,
+)
 from .chen import ChenLinear
 from .poincare import Poincare, Poincare_linear, project, PoincareActivation
 from .LResNet import lorentz_resnet18
@@ -11,8 +17,11 @@ from .LBatchNormNew import LorentzBatchNormBase, LorentzBatchNorm1d, LorentzBatc
 
 __all__ = [
     "Lorentz",
+    "LorentzFullyConnectedOurs",
+    "LorentzFullyConnectedTheirs",
     "LorentzFullyConnected",
     "LorentzMLR",
+    "resolve_lorentz_fc_class",
     "ChenLinear",
     "Poincare",
     "Poincare_linear",
