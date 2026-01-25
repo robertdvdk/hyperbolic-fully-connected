@@ -1,5 +1,5 @@
 program: main.py
-method: bayes
+method: grid
 metric:
   name: best_val_acc
   goal: maximize
