@@ -12,6 +12,7 @@ parameters:
   
   warmup_epochs:
     values: [0, 10]
+
   # Fixed parameters for sweep
   learning_rate:
     value: 0.05
@@ -33,8 +34,6 @@ parameters:
     value: "sgd"
   mlr_type:
     value: "fc_mlr"
-  warmup_epochs:
-    value: 10
   batch_size:
     value: 128
   hidden_dim:
