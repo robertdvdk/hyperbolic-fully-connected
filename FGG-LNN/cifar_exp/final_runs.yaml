@@ -9,6 +9,9 @@ parameters:
     values: [0, 1, 2]
   init_method:
     values: ["xavier", "lorentz_kaiming"]
+  
+  warmup_epochs:
+    values: [0, 10]
   # Fixed parameters for sweep
   learning_rate:
     value: 0.05
