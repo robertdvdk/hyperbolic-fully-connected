@@ -18,6 +18,7 @@ class EuclideanToLorentzConv(nn.Module):
         normalize_variance: bool = True,
         init_method: str = "lorentz_kaiming",
         use_weight_norm: bool = False,
+        fc_variant: str = "ours",
     ):
         """
         Args:
@@ -41,6 +42,7 @@ class EuclideanToLorentzConv(nn.Module):
                 activation=nn.Identity(),
                 init_method=init_method,
                 use_weight_norm=use_weight_norm,
+                fc_variant=fc_variant
             ),
             LorentzBatchNorm2d(
                 num_features=out_channels,

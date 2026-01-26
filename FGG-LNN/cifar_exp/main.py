@@ -435,17 +435,17 @@ def get_dataloaders(
     ])
 
     # Load full training set (will be split into train/val)
-    full_trainset = torchvision.datasets.CIFAR100(
+    full_trainset = torchvision.datasets.CIFAR10(
         data_dir, train=True, download=True, transform=train_transform
     )
 
     # For validation, we need the same data but without augmentation
-    full_trainset_val = torchvision.datasets.CIFAR100(
+    full_trainset_val = torchvision.datasets.CIFAR10(
         data_dir, train=True, download=True, transform=val_transform
     )
 
     # Test set is completely separate
-    testset = torchvision.datasets.CIFAR100(
+    testset = torchvision.datasets.CIFAR10(
         data_dir, train=False, download=True, transform=val_transform
     )
 
@@ -614,10 +614,20 @@ def train(config=None):
         normalisation_mode = get_config('normalisation_mode', get_config('bn_mode', 'normal'))
         use_weight_norm = get_config('use_weight_norm', False)
 
-    mlr_type = get_config('mlr_type', get_config('classifier_type', 'lorentz_mlr'))
+    # Optional coupled Lorentz method config
+    lorentz_method = get_config('lorentz_method', None)
+    if lorentz_method == "ours":
+        fc_variant = "ours"
+        mlr_type = "fc_mlr"
+    elif lorentz_method == "theirs":
+        fc_variant = "theirs"
+        mlr_type = "lorentz_mlr"
+    else:
+        fc_variant = get_config('fc_variant', 'ours')
+        mlr_type = get_config('mlr_type', get_config('classifier_type', 'lorentz_mlr'))
 
     if get_config("manifold", "lorentz") == "euclidean":
-        model = torchvision.models.resnet18(num_classes=100)
+        model = torchvision.models.resnet18(num_classes=10)
         model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
         model.maxpool = nn.Identity()
         model = model.to(device)
@@ -625,7 +635,7 @@ def train(config=None):
         base_dim = get_config('hidden_dim', 64)
         embedding_dim = get_config('embedding_dim', None)
         model = lorentz_resnet18(
-            num_classes=100,
+            num_classes=10,
             base_dim=base_dim,
             manifold=manifold,
             init_method=get_config('init_method', 'lorentz_kaiming'),
@@ -634,7 +644,7 @@ def train(config=None):
             normalisation_mode=normalisation_mode,  # "normal", "fix_gamma", "skip_final_bn2", "clamp_scale", "mean_only", or "centering_only"
             mlr_type=mlr_type,  # "lorentz_mlr" or "fc_mlr"
             use_weight_norm=use_weight_norm,
-            fc_variant=get_config('fc_variant', 'ours'),
+            fc_variant=fc_variant,
             embedding_dim=embedding_dim,
         ).to(device)
 
@@ -798,8 +808,8 @@ def train(config=None):
         epoch_time = time.time() - start
 
         # Debug inspection at intervals
-        # if debug_interval > 0 and (epoch + 1) % debug_interval == 0:
-        #     inspect_model(model, train_loader, device)
+        if debug_interval > 0 and (epoch + 1) % debug_interval == 0:
+            inspect_model(model, train_loader, device)
 
         # Log metrics
         metrics = {
@@ -898,7 +908,7 @@ def main():
 
     default_config = {
         # Model
-        "hidden_dim": 4,
+        "hidden_dim": 64,
         "embedding_dim": None,  # Optional final embedding dimension before classifier
         "curvature": 1.0,
         "init_method": "xavier",
@@ -908,6 +918,8 @@ def main():
         "mlr_type": "fc_mlr",  # "lorentz_mlr" or "fc_mlr"
         "manifold": "lorentz",
         "fc_variant": "ours",  # "ours" or "theirs"
+        "lorentz_method": "theirs",  # None, "ours", or "theirs"
+        "norm_config": "normal_noweightnorm",
 
         # Optimization
         "optimizer": "sgd",
@@ -915,17 +927,17 @@ def main():
         "weight_decay": 5e-4,
         "momentum": 0.9,
         "batch_size": 128,
-        "num_epochs": 50,
+        "num_epochs": 200,
         "grad_clip": 1.0,
 
         # Scheduler
-        "scheduler": "cosine",
-        "warmup_epochs": 5,
+        "scheduler": "steplr",
+        "warmup_epochs": 0,
         "lr_decay": 0.2,
 
         # Data
         "val_fraction": 0.1,
-        "train_subset_fraction": 0.25,
+        "train_subset_fraction": 1.0,
         "data_split_seed": 42,
 
         # Early stopping
@@ -934,15 +946,15 @@ def main():
 
         # Misc
         "seed": 0,
-        "compile": True,
+        "compile": False,
         "evaluate_test": False,
 
         # Checkpointing
         "checkpoint_dir": "./checkpoints_new",
         "resume_checkpoint": None,  # Path to checkpoint to resume from
         "inspect_only": False,      # If True, just inspect the model and exit
-        "debug_interval": 5,       # Inspect model every N epochs (0 to disable)
-        "use_weight_norm": False,
+        "debug_interval": 0,       # Inspect model every N epochs (0 to disable)
+        "use_weight_norm": True,
     } 
 
     # wandb.init() will use sweep config if run by wandb agent,
@@ -976,17 +988,29 @@ def inspect_checkpoint(checkpoint_path):
     manifold = Lorentz(k_value=config.get('curvature', 1.0))
     base_dim = config.get('hidden_dim', 64)
     embedding_dim = config.get('embedding_dim', None)
+    # Optional coupled Lorentz method config
+    lorentz_method = config.get('lorentz_method', None)
+    if lorentz_method == "ours":
+        fc_variant = "ours"
+        mlr_type = "fc_mlr"
+    elif lorentz_method == "theirs":
+        fc_variant = "theirs"
+        mlr_type = "lorentz_mlr"
+    else:
+        fc_variant = config.get('fc_variant', 'ours')
+        mlr_type = config.get('mlr_type', config.get('classifier_type', 'lorentz_mlr'))
+
     model = lorentz_resnet18(
-        num_classes=100,
+        num_classes=10,
         base_dim=base_dim,
         manifold=manifold,
         init_method=config.get('init_method', 'lorentz_kaiming'),
         input_proj_type=config.get('input_proj_type', 'conv_bn_relu'),
         mlr_init=config.get('mlr_init', 'mlr'),
         normalisation_mode=config.get('normalisation_mode', config.get('bn_mode', 'normal')),
-        mlr_type=config.get('mlr_type', config.get('classifier_type', 'lorentz_mlr')),
+        mlr_type=mlr_type,
         use_weight_norm=config.get('use_weight_norm', False),
-        fc_variant=config.get('fc_variant', 'ours'),
+        fc_variant=fc_variant,
         embedding_dim=embedding_dim,
     ).to(device)
 

@@ -49,14 +49,11 @@ class LorentzFullyConnectedOurs(nn.Module):
 
     def reset_parameters(self, reset_params, a_default):
         if self.use_weight_norm:
-            in_features, _ = self.v.shape
+            in_features, out_features = self.v.shape
             # Initialize direction randomly
             nn.init.kaiming_normal_(self.v)
             # Initialize magnitude based on desired init scheme
-            if reset_params == "lorentz_kaiming":
-                self.g.data.fill_((1.0 / in_features) ** 0.5)
-            else:
-                self.g.data.fill_(1.0)
+            self.g.data.fill_((1.0 / (in_features + out_features)) ** 0.5)
             self.a.data.fill_(a_default)
             return
 
@@ -215,7 +212,6 @@ class LorentzFullyConnectedTheirs(nn.Module):
             **kwargs,
         ):
 
-        print("TRUEEEEE")
         super(LorentzFullyConnectedTheirs, self).__init__()
         self.manifold = manifold
         self.in_features = in_features
@@ -249,8 +245,8 @@ class LorentzFullyConnectedTheirs(nn.Module):
             unit_length = x_space/torch.sqrt(square_norm)
             x_space = scale*unit_length
 
-            x_time = torch.sqrt(scale**2 + self.manifold.k + 1e-5)
-            x_time = x_time.masked_fill(mask, self.manifold.k.sqrt())
+            x_time = torch.sqrt(scale**2 + self.manifold.k() + 1e-5)
+            x_time = x_time.masked_fill(mask, self.manifold.k().sqrt())
 
             mask = mask==False
             x_space = x_space * mask

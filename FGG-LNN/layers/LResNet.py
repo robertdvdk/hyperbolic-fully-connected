@@ -68,6 +68,7 @@ class LorentzResNet(nn.Module):
             normalize_variance=self.normalize_variance,
             init_method=self.init_method,
             use_weight_norm=self.use_weight_norm,
+            fc_variant=self.fc_variant,
         )
 
         # ResNet stages
