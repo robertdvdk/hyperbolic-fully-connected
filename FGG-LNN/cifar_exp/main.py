@@ -435,17 +435,17 @@ def get_dataloaders(
     ])
 
     # Load full training set (will be split into train/val)
-    full_trainset = torchvision.datasets.CIFAR10(
+    full_trainset = torchvision.datasets.CIFAR100(
         data_dir, train=True, download=True, transform=train_transform
     )
 
     # For validation, we need the same data but without augmentation
-    full_trainset_val = torchvision.datasets.CIFAR10(
+    full_trainset_val = torchvision.datasets.CIFAR100(
         data_dir, train=True, download=True, transform=val_transform
     )
 
     # Test set is completely separate
-    testset = torchvision.datasets.CIFAR10(
+    testset = torchvision.datasets.CIFAR100(
         data_dir, train=False, download=True, transform=val_transform
     )
 
@@ -627,7 +627,7 @@ def train(config=None):
         mlr_type = get_config('mlr_type', get_config('classifier_type', 'lorentz_mlr'))
 
     if get_config("manifold", "lorentz") == "euclidean":
-        model = torchvision.models.resnet18(num_classes=10)
+        model = torchvision.models.resnet18(num_classes=100)
         model.conv1 = nn.Conv2d(3, 64, kernel_size=3, stride=1, padding=1, bias=False)
         model.maxpool = nn.Identity()
         model = model.to(device)
@@ -635,7 +635,7 @@ def train(config=None):
         base_dim = get_config('hidden_dim', 64)
         embedding_dim = get_config('embedding_dim', None)
         model = lorentz_resnet18(
-            num_classes=10,
+            num_classes=100,
             base_dim=base_dim,
             manifold=manifold,
             init_method=get_config('init_method', 'lorentz_kaiming'),
@@ -1001,7 +1001,7 @@ def inspect_checkpoint(checkpoint_path):
         mlr_type = config.get('mlr_type', config.get('classifier_type', 'lorentz_mlr'))
 
     model = lorentz_resnet18(
-        num_classes=10,
+        num_classes=100,
         base_dim=base_dim,
         manifold=manifold,
         init_method=config.get('init_method', 'lorentz_kaiming'),
