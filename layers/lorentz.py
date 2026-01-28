@@ -427,6 +427,9 @@ class Lorentz(nn.Module):
         if not keepdim:
             dist = dist.squeeze(-1)
         return dist
+
+    def assert_check_point(self, x):
+        pass
     
     @torch._dynamo.disable
     def dist0(self, x: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
