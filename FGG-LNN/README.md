@@ -2,7 +2,7 @@
 
 1. Clone the repo:
 ```bash
-git clone https://github.com/ricardo-chavez-torres/hyperbolic-fully-connected.git
+git clone https://github.com/anonymous/hyperbolic-fully-connected.git
 cd hyperbolic-fully-connected
 ```
 2. Install `uv` if necessary
