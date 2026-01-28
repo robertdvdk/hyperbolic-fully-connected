@@ -1,0 +1,39 @@
+[project]
+name = "hyperbolic-fully-connected"
+version = "0.1.0"
+authors = [
+    { name = "ricardo-chavez-torres", email = "chaveztorresricardo@gmail.com" }
+]
+requires-python = ">=3.12"
+dependencies = [
+    "torch",
+    "torchvision",
+    "lightning",
+    "wandb",
+    "hypll",
+    "geoopt @ git+https://github.com/geoopt/geoopt.git",
+    "scikit-learn>=1.7.2",
+    "optuna>=4.5.0",
+    "pandas>=2.3.3",
+    "einops>=0.8.1",
+    "nltk>=3.9.2",
+    "matplotlib>=3.10.7",
+    "openood",
+    "numpy>=2.3.4",
+]
+
+[project.optional-dependencies]
+dev = [
+    "notebook"
+]
+
+[tool.uv.pip]
+extra-index-url = [
+    "https://download.pytorch.org/whl/cu126"
+]
+
+[tool.uv.sources]
+openood = { git = "https://github.com/Jingkang50/OpenOOD" }
+
+[tool.setuptools]
+packages = ["layers"]

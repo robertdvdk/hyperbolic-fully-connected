@@ -9,7 +9,8 @@
       "Bash(.venv/bin/python:*)",
       "Bash(uv run python -c \"\nimport torch\nimport pickle\nimport sys\n\n# Try to extract just the model weights by using a custom unpickler\nclass SafeUnpickler\\(pickle.Unpickler\\):\n    def find_class\\(self, module, name\\):\n        # Replace wandb config with a plain dict\n        if ''wandb'' in module:\n            return dict\n        return super\\(\\).find_class\\(module, name\\)\n\n# Try loading with zipfile to see the structure\nimport zipfile\nwith zipfile.ZipFile\\(''cifar_exp/checkpoints/best_model_4kfagb38.pt'', ''r''\\) as zf:\n    print\\(''Files in checkpoint:'', zf.namelist\\(\\)\\)\n\")",
       "Bash(uv run python:*)",
-      "Bash(chmod:*)"
+      "Bash(chmod:*)",
+      "Bash(ls:*)"
     ]
   }
 }
