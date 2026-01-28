@@ -117,29 +117,10 @@ def main():
     print(f"Using device: {device}")
 
     # --- Experiment Configurations ---
-    input_dims = [2**i for i in range(4, 15)]
-    output_dims = [2**i for i in range(4, 15)]
-    batch_dims = [2**i for i in range(1, 10)]
-
-    max_input = max(input_dims)
-    max_output = max(output_dims)
-    max_batch = max(batch_dims)
-
     configs = []
 
-    # Vary input_dims, fix output_dims and batch_dims
-    # configs += [(i, max_output, max_batch) for i in input_dims]
-    # # Vary output_dims, fix input_dims and batch_dims
-    # configs += [(max_input, o, max_batch) for o in output_dims]
-    # # Vary batch_dims, fix input_dims and output_dims
-    # configs += [(max_input, max_output, b) for b in batch_dims]
     dims = [16, 64, 256, 1024, 4096]
     configs = [(i, o, 512) for i, o in zip(dims, dims)]
-
-    # input_dims_large = [2**i for i in range(10,15)]
-    # output_dims_large = [2**i for i in range(10,15)]
-    # batch_dims_large = [2**i for i in range(1,3)]
-    # configs += [(i,o,b) for i in input_dims_large for o in output_dims_large for b in batch_dims_large]
 
     # --- Setup for Dynamic CSV Writing ---
     output_filename = "runtime_results_mine.csv"

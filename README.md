@@ -49,10 +49,7 @@ toy_exp/              Hyperplane convergence experiments
   toy_exp.py          Tests convergence of hyperplane learning at various distances
 
 runtime_exp/          Runtime benchmarking
-  layer_runtimes.py   Benchmarks across layer implementations and dimensions
-  my_runtimes.py      Additional timing utilities
-  my_plot.py          Publication-quality plotting (ICML style)
-  plot_results.py     Generic runtime result plotting
+  my_runtimes.py      Benchmarks across layer implementations and dimensions
 ```
 
 ## Usage
@@ -107,4 +104,4 @@ The `fc_variant` parameter selects between two fully connected layer implementat
 
 ## License
 
-See [LICENSE](LICENSE) for details.
+MIT

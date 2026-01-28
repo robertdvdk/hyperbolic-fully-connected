@@ -9,3 +9,4 @@ HyperbolicCV/
 *.png
 msp.yml
 */wandb/*
+.claude/

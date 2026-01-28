@@ -114,140 +114,6 @@ def load_checkpoint(checkpoint_path, model, optimizer=None, scheduler=None, devi
     return start_epoch, checkpoint
 
 
-def inspect_model(model, dataloader, device='cuda'):
-    """
-    Inspect model state for debugging NaN issues.
-    Checks U_norm values in all LorentzFullyConnected layers and logit magnitudes.
-    """
-    model.eval()
-    print("\n" + "="*60)
-    print("MODEL INSPECTION")
-    print("="*60)
-
-    # Check BatchNorm parameters - especially stage4.1.bn2
-    print("\n--- BatchNorm parameters (gamma/beta for all BN layers) ---")
-    for name, module in model.named_modules():
-        if 'bn' in name.lower() or 'batchnorm' in name.lower() or 'BatchNorm' in type(module).__name__:
-            print(f"{name} ({type(module).__name__}):")
-            # LorentzBatchNorm uses gamma/beta, standard BN uses weight/bias
-            if hasattr(module, 'gamma') and module.gamma is not None:
-                print(f"  gamma: {module.gamma.item():.6f}")
-            if hasattr(module, 'weight') and module.weight is not None:
-                print(f"  gamma (weight): min={module.weight.min().item():.6f}, max={module.weight.max().item():.6f}")
-            if hasattr(module, 'beta') and module.beta is not None:
-                beta = module.beta
-                print(f"  beta: time={beta[0].item():.4f}, space_norm={beta[1:].norm().item():.4f}")
-            if hasattr(module, 'bias') and module.bias is not None:
-                print(f"  beta (bias): min={module.bias.min().item():.6f}, max={module.bias.max().item():.6f}")
-            if hasattr(module, 'running_mean') and module.running_mean is not None:
-                rm = module.running_mean
-                print(f"  running_mean: norm={rm.norm().item():.6f}")
-            if hasattr(module, 'running_var') and module.running_var is not None:
-                rv = module.running_var
-                print(f"  running_var: {rv.item():.6f}")
-
-    # Forward pass to check activations
-    print("\n--- Forward pass inspection ---")
-    with torch.no_grad():
-        x, y = next(iter(dataloader))
-        x = x.to(device)
-
-        # Get intermediate activations
-        x_proj = model.input_proj(x)
-        print(f"After input_proj: time=[{x_proj[:,0].min().item():.2f}, {x_proj[:,0].max().item():.2f}], "
-              f"space_norm={x_proj[:,1:].norm(dim=1).mean().item():.2f}")
-
-        x1 = model.stage1(x_proj)
-        print(f"After stage1: time=[{x1[:,0].min().item():.2f}, {x1[:,0].max().item():.2f}], "
-              f"space_norm={x1[:,1:].norm(dim=1).mean().item():.2f}")
-
-        x2 = model.stage2(x1)
-        print(f"After stage2: time=[{x2[:,0].min().item():.2f}, {x2[:,0].max().item():.2f}], "
-              f"space_norm={x2[:,1:].norm(dim=1).mean().item():.2f}")
-
-        x3 = model.stage3(x2)
-        print(f"After stage3: time=[{x3[:,0].min().item():.2f}, {x3[:,0].max().item():.2f}], "
-              f"space_norm={x3[:,1:].norm(dim=1).mean().item():.2f}")
-
-        # Detailed stage4 inspection - find where explosion happens
-        print("\n  --- Detailed Stage4 inspection ---")
-        x_stage = x3
-        for block_idx, block in enumerate(model.stage4):
-            print(f"  Stage4.{block_idx} input: time=[{x_stage[:,0].min().item():.2f}, {x_stage[:,0].max().item():.2f}], "
-                  f"space_norm={x_stage[:,1:].norm(dim=1).mean().item():.2f}")
-
-            # Through layer1
-            x_l1 = block.layer1(x_stage)
-            print(f"    after layer1: time=[{x_l1[:,0].min().item():.2f}, {x_l1[:,0].max().item():.2f}], "
-                  f"space_norm={x_l1[:,1:].norm(dim=1).mean().item():.2f}")
-
-            # Through bn1
-            x_bn1 = block.bn1(x_l1)
-            print(f"    after bn1: time=[{x_bn1[:,0].min().item():.2f}, {x_bn1[:,0].max().item():.2f}], "
-                  f"space_norm={x_bn1[:,1:].norm(dim=1).mean().item():.2f}")
-
-            # Through relu
-            x_relu1 = block.manifold.relu(x_bn1, manifold_dim=1)
-            print(f"    after relu1: time=[{x_relu1[:,0].min().item():.2f}, {x_relu1[:,0].max().item():.2f}], "
-                  f"space_norm={x_relu1[:,1:].norm(dim=1).mean().item():.2f}")
-
-            # Through layer2
-            x_l2 = block.layer2(x_relu1)
-            print(f"    after layer2: time=[{x_l2[:,0].min().item():.2f}, {x_l2[:,0].max().item():.2f}], "
-                  f"space_norm={x_l2[:,1:].norm(dim=1).mean().item():.2f}")
-
-            # Through bn2 - with detailed internal tracing (if bn2 exists)
-            if block.bn2 is not None:
-                x_bn2 = block.bn2(x_l2)
-                print(f"    after bn2: time=[{x_bn2[:,0].min().item():.2f}, {x_bn2[:,0].max().item():.2f}], "
-                      f"space_norm={x_bn2[:,1:].norm(dim=1).mean().item():.2f}")
-
-            else:
-                x_bn2 = x_l2  # No bn2, just pass through
-                print(f"    bn2: SKIPPED (skip_bn2=True)")
-
-            # Through proj (shortcut)
-            x_proj = block.proj(x_stage)
-            print(f"    after proj: time=[{x_proj[:,0].min().item():.2f}, {x_proj[:,0].max().item():.2f}], "
-                  f"space_norm={x_proj[:,1:].norm(dim=1).mean().item():.2f}")
-
-            # Residual addition (space only)
-            out_space = x_proj[:, 1:, :, :] + x_bn2[:, 1:, :, :]
-            print(f"    after space add: space_norm={out_space.norm(dim=1).mean().item():.2f}, "
-                  f"space_max={out_space.abs().max().item():.2f}")
-
-            # Projection to get time
-            x_out = block.manifold.projection_space_orthogonal(out_space, manifold_dim=1)
-            print(f"    after proj_orth: time=[{x_out[:,0].min().item():.2f}, {x_out[:,0].max().item():.2f}], "
-                  f"space_norm={x_out[:,1:].norm(dim=1).mean().item():.2f}")
-
-            # Final relu
-            x_stage = block.manifold.relu(x_out, manifold_dim=1)
-            print(f"    after relu2: time=[{x_stage[:,0].min().item():.2f}, {x_stage[:,0].max().item():.2f}], "
-                  f"space_norm={x_stage[:,1:].norm(dim=1).mean().item():.2f}")
-
-        x4 = x_stage
-        print(f"After stage4: time=[{x4[:,0].min().item():.2f}, {x4[:,0].max().item():.2f}], "
-              f"space_norm={x4[:,1:].norm(dim=1).mean().item():.2f}")
-
-        x_tokens = x4.permute(0, 2, 3, 1).reshape(x4.shape[0], -1, x4.shape[1])
-        print(f"After flatten tokens: shape={tuple(x_tokens.shape)}, "
-            f"time=[{x_tokens[...,0].min().item():.2f}, {x_tokens[...,0].max().item():.2f}], "
-            f"space_norm={x_tokens[...,1:].norm(dim=-1).mean().item():.2f}")
-
-        token_logits = model.classifier(x_tokens)
-        print(f"After classifier (per-token): shape={tuple(token_logits.shape)}, "
-            f"min={token_logits.min().item():.2f}, max={token_logits.max().item():.2f}, "
-            f"std={token_logits.std().item():.2f}, mean_abs={token_logits.abs().mean().item():.2f}")
-
-        logits = token_logits.mean(dim=1)
-        print(f"Logits (mean over tokens): min={logits.min().item():.2f}, max={logits.max().item():.2f}, "
-            f"std={logits.std().item():.2f}, mean_abs={logits.abs().mean().item():.2f}")
-
-    print("="*60 + "\n")
-    model.train()
-
-
 def get_dataloaders(
     batch_size,
     data_dir,
@@ -256,7 +122,7 @@ def get_dataloaders(
     seed=42,
 ):
     """
-    Create CIFAR-100 train/val/test dataloaders.
+    Create CIFAR-10 train/val/test dataloaders.
 
     Args:
         batch_size: Batch size for all loaders
@@ -333,15 +199,10 @@ def get_dataloaders(
     return train_loader, val_loader, test_loader
 
 
-def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0, debug_gamma=False):
+def train_epoch(model, train_loader, optimizer, device='cuda'):
     """Train for one epoch, return avg loss and accuracy."""
     model.train()
     running_loss, total_correct, total_samples = 0.0, 0, 0
-
-    # For tracking gamma gradients
-    gamma_grad_accum = {}
-    gamma_values = {}
-    batch_count = 0
 
     for x, y in train_loader:
         x, y = x.to(device), y.to(device)
@@ -350,33 +211,11 @@ def train_epoch(model, train_loader, optimizer, device='cuda', grad_clip=1.0, de
         logits = model(x).squeeze()
         loss = F.cross_entropy(logits, y)
         loss.backward()
-
-        # Track gamma gradients after backward
-        if debug_gamma and batch_count < 10:  # First 10 batches
-            for name, param in model.named_parameters():
-                if 'gamma' in name and param.grad is not None:
-                    if name not in gamma_grad_accum:
-                        gamma_grad_accum[name] = []
-                    gamma_grad_accum[name].append(param.grad.item())
-                    gamma_values[name] = param.item()
-        
-
-        # torch.nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
         optimizer.step()
 
         running_loss += loss.item() * x.size(0)
         total_correct += (logits.argmax(dim=1) == y).sum().item()
         total_samples += x.size(0)
-        batch_count += 1
-
-    # Print gamma gradient summary
-    if debug_gamma and gamma_grad_accum:
-        print("\n  --- Gamma gradients (first 10 batches) ---")
-        for name in sorted(gamma_grad_accum.keys()):
-            grads = gamma_grad_accum[name]
-            avg_grad = sum(grads) / len(grads)
-            print(f"  {name}: value={gamma_values[name]:.4f}, avg_grad={avg_grad:.6f}, "
-                  f"all_positive={all(g > 0 for g in grads)}, all_negative={all(g < 0 for g in grads)}")
 
     return running_loss / total_samples, total_correct / total_samples
 
@@ -505,25 +344,13 @@ def train(config=None):
     optimizer_name = get_config('optimizer', 'adam').lower()
     lr = get_config('learning_rate', 1e-3)
     weight_decay = get_config('weight_decay', 0.0)
-    warmup_epochs = get_config('warmup_epochs', 0)
-    num_epochs = get_config('num_epochs', 100)
-    # Load checkpoint if specified
     start_epoch = 0
-    checkpoint_path_load = get_config("resume_checkpoint", None)
-    if checkpoint_path_load:
-        start_epoch, ckpt = load_checkpoint(
-            checkpoint_path_load, model, optimizer, scheduler, device
-        )
-        # Inspect mode: just analyze and exit
-        if get_config('inspect_only', False):
-            inspect_model(model, train_loader, device)
-            return 0.0
 
     if get_config('compile', True):
         model = torch.compile(model)
 
     # Use param groups: manifold params get 0.2x learning rate
-    model_parameters = get_param_groups(model, lr * 0.2, weight_decay, verbose=True)
+    model_parameters = get_param_groups(model, lr * 0.2, weight_decay)
 
     if optimizer_name == "adam":
         optimizer = torch.optim.Adam(
@@ -541,6 +368,7 @@ def train(config=None):
     scheduler_type = get_config('scheduler', 'none').lower()
     num_epochs = get_config('num_epochs', 100)
     warmup_epochs = get_config('warmup_epochs', 0)
+    scheduler = None
 
     # For StepLR: track first milestone to skip decay for manifold params
     steplr_first_milestone = None
@@ -598,6 +426,13 @@ def train(config=None):
         else:
             scheduler = CosineAnnealingLR(optimizer, T_max=num_epochs, eta_min=lr * 0.01)
 
+    # Load checkpoint if specified
+    checkpoint_path_load = get_config("resume_checkpoint", None)
+    if checkpoint_path_load:
+        start_epoch, _ = load_checkpoint(
+            checkpoint_path_load, model, optimizer, scheduler, device
+        )
+
     # Early stopping
     early_stopping = None
     if get_config('early_stopping', False):
@@ -615,18 +450,12 @@ def train(config=None):
     # Training loop
     best_val_acc = 0.0
     best_val_loss = float('inf')
-    debug_interval = get_config('debug_interval', 0)  # Set to e.g. 10 to inspect every 10 epochs
 
     for epoch in range(start_epoch, num_epochs):
         start = time.time()
 
-        # Debug gamma gradients at debug intervals
-        should_debug_gamma = debug_interval > 0 and (epoch + 1) % debug_interval == 0
-
         train_loss, train_acc = train_epoch(
             model, train_loader, optimizer, device,
-            grad_clip=get_config('grad_clip', 1.0),
-            debug_gamma=should_debug_gamma
         )
         val_loss, val_acc = evaluate(model, val_loader, device)
 
@@ -653,10 +482,6 @@ def train(config=None):
             print(f"  Skipped lr drop for manifold parameters (restored to {optimizer.param_groups[1]['lr']:.6f})")
 
         epoch_time = time.time() - start
-
-        # Debug inspection at intervals
-        if debug_interval > 0 and (epoch + 1) % debug_interval == 0:
-            inspect_model(model, train_loader, device)
 
         # Log metrics
         metrics = {
@@ -775,7 +600,6 @@ def main():
         "momentum": 0.9,
         "batch_size": 128,
         "num_epochs": 200,
-        "grad_clip": 1.0,
 
         # Scheduler
         "scheduler": "steplr",
@@ -797,10 +621,8 @@ def main():
         "evaluate_test": False,
 
         # Checkpointing
-        "checkpoint_dir": "./checkpoints_new",
+        "checkpoint_dir": "./checkpoints",
         "resume_checkpoint": None,  # Path to checkpoint to resume from
-        "inspect_only": False,      # If True, just inspect the model and exit
-        "debug_interval": 0,       # Inspect model every N epochs (0 to disable)
         "use_weight_norm": True,
     } 
 
@@ -813,68 +635,6 @@ def main():
 
     train(wandb.config)
     wandb.finish()
-
-
-def inspect_checkpoint(checkpoint_path):
-    """
-    Standalone function to inspect a checkpoint without training.
-    Usage: python main.py --inspect path/to/checkpoint.pt
-    """
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-    # Load checkpoint to get config
-    checkpoint = torch.load(checkpoint_path, map_location=device)
-    config = checkpoint.get('config', {})
-
-    print(f"Checkpoint from epoch {checkpoint.get('epoch', '?')}")
-    print(f"Val loss: {checkpoint.get('val_loss', '?')}")
-    print(f"Val acc: {checkpoint.get('val_acc', '?')}")
-    print(f"Config: {config}")
-
-    # Create model
-    manifold = Lorentz(k_value=config.get('curvature', 1.0))
-    base_dim = config.get('hidden_dim', 64)
-    embedding_dim = config.get('embedding_dim', None)
-    # Optional coupled Lorentz method config
-    lorentz_method = config.get('lorentz_method', None)
-    if lorentz_method == "ours":
-        fc_variant = "ours"
-        mlr_type = "fc_mlr"
-    elif lorentz_method == "theirs":
-        fc_variant = "theirs"
-        mlr_type = "lorentz_mlr"
-    else:
-        fc_variant = config.get('fc_variant', 'ours')
-        mlr_type = config.get('mlr_type', config.get('classifier_type', 'lorentz_mlr'))
-
-    model = lorentz_resnet18(
-        num_classes=10,
-        base_dim=base_dim,
-        manifold=manifold,
-        init_method=config.get('init_method', 'lorentz_kaiming'),
-        input_proj_type=config.get('input_proj_type', 'conv_bn_relu'),
-        mlr_init=config.get('mlr_init', 'mlr'),
-        normalisation_mode=config.get('normalisation_mode', config.get('bn_mode', 'normal')),
-        mlr_type=mlr_type,
-        use_weight_norm=config.get('use_weight_norm', False),
-        fc_variant=fc_variant,
-        embedding_dim=embedding_dim,
-    ).to(device)
-
-    # Load weights
-    load_checkpoint(checkpoint_path, model, device=device)
-
-    # Create minimal dataloader for inspection
-    _, val_loader, _ = get_dataloaders(
-        batch_size=32,
-        data_dir="./data/cifar",
-        val_fraction=0.1,
-        train_subset_fraction=1.0,
-        seed=42,
-    )
-
-    # Inspect
-    inspect_model(model, val_loader, device)
 
 
 if __name__ == "__main__":
